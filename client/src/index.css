@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
+
+:root {
+  --color-teal-50: #f0fdfa;
+  --color-teal-100: #ccfbf1;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0d9488;
+  --color-teal-700: #0f766e;
+  --color-teal-900: #134e4a;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-red-500: #ef4444;
+  --color-green-500: #22c55e;
+  --font-en: 'Plus Jakarta Sans', sans-serif;
+  --font-ur: 'Noto Nastaliq Urdu', serif;
+}
+
+body {
+  font-family: var(--font-en);
+  background-color: #f8fafb;
+  color: #1a2332;
+  margin: 0;
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-ur);
+}
+
+/* Confidence color classes */
+.confidence-high {
+  color: #16a34a;
+  background-color: #f0fdf4;
+}
+.confidence-medium {
+  color: #d97706;
+  background-color: #fffbeb;
+}
+.confidence-low {
+  color: #dc2626;
+  background-color: #fef2f2;
+}

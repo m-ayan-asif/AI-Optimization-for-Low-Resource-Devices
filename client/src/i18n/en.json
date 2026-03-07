@@ -1,0 +1,106 @@
+{
+  "app": {
+    "name": "SkinSense",
+    "tagline": "AI-Powered Dermatological Screening"
+  },
+  "nav": {
+    "home": "Home",
+    "screening": "New Screening",
+    "history": "History",
+    "clinics": "Find Clinics",
+    "logout": "Logout",
+    "profile": "Profile"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "username": "Username",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "role": "I am a",
+    "rolePatient": "Patient",
+    "roleHealthworker": "Healthcare Worker",
+    "age": "Age",
+    "gender": "Gender",
+    "region": "Region",
+    "male": "Male",
+    "female": "Female",
+    "other": "Other",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "loginHere": "Login here",
+    "registerHere": "Register here"
+  },
+  "dashboard": {
+    "welcome": "Welcome back",
+    "startScreening": "Start New Screening",
+    "recentScreenings": "Recent Screenings",
+    "noScreenings": "No screenings yet. Start your first screening above.",
+    "viewAll": "View All History"
+  },
+  "screening": {
+    "title": "Dermatological Screening",
+    "step1": "Upload Image",
+    "step2": "Voice Symptoms",
+    "step3": "Analysis",
+    "uploadTitle": "Capture or Upload Skin Image",
+    "uploadDesc": "Take a clear photo of the affected skin area or upload an existing image.",
+    "uploadBtn": "Upload Image",
+    "captureBtn": "Take Photo",
+    "dragDrop": "Drag and drop an image here, or click to browse",
+    "requirements": "JPEG or PNG, minimum 500×500 pixels, clear lighting",
+    "voiceTitle": "Describe Your Symptoms",
+    "voiceDesc": "Optional: Record a voice description of your symptoms in Urdu or English.",
+    "voiceRecord": "Start Recording",
+    "voiceStop": "Stop Recording",
+    "voiceSkip": "Skip this step",
+    "voiceLang": "Recording Language",
+    "analyzing": "Analyzing your image...",
+    "analyzingDesc": "Our AI is examining your skin image. This usually takes a few seconds.",
+    "next": "Next",
+    "back": "Back",
+    "submit": "Run Analysis"
+  },
+  "results": {
+    "title": "Screening Results",
+    "topCondition": "Most Likely Condition",
+    "confidence": "Confidence",
+    "allConditions": "All Conditions Screened",
+    "symptoms": "Extracted Symptoms",
+    "heatmap": "Explanation Heatmap",
+    "heatmapDesc": "Highlighted regions show areas that influenced the screening result.",
+    "disclaimer": "This is a preliminary screening result, not a medical diagnosis. Please consult a dermatologist for professional evaluation.",
+    "findClinic": "Find Nearest Clinic",
+    "newScreening": "New Screening",
+    "inferenceTime": "Analysis completed in"
+  },
+  "history": {
+    "title": "Screening History",
+    "date": "Date",
+    "condition": "Condition",
+    "confidence": "Confidence",
+    "status": "Status",
+    "pending": "Pending Review",
+    "reviewed": "Reviewed",
+    "viewDetails": "View Details",
+    "empty": "No screening history found."
+  },
+  "clinics": {
+    "title": "Find Nearby Clinics",
+    "selectRegion": "Select Region",
+    "selectCity": "Select City",
+    "allRegions": "All Regions",
+    "phone": "Phone",
+    "address": "Address",
+    "getDirections": "Get Directions"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try Again",
+    "cancel": "Cancel",
+    "save": "Save",
+    "ms": "ms"
+  }
+}
