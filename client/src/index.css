@@ -4,24 +4,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
 
 :root {
-  --color-teal-50: #f0fdfa;
-  --color-teal-100: #ccfbf1;
-  --color-teal-500: #14b8a6;
-  --color-teal-600: #0d9488;
-  --color-teal-700: #0f766e;
-  --color-teal-900: #134e4a;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-red-500: #ef4444;
-  --color-green-500: #22c55e;
+  --purple-50: #faf5ff;
+  --purple-100: #f3e8ff;
+  --purple-200: #e9d5ff;
+  --purple-400: #c084fc;
+  --purple-500: #a855f7;
+  --purple-600: #9333ea;
+  --purple-700: #7e22ce;
+  --purple-800: #6b21a8;
+  --purple-900: #581c87;
   --font-en: 'Plus Jakarta Sans', sans-serif;
   --font-ur: 'Noto Nastaliq Urdu', serif;
 }
 
 body {
   font-family: var(--font-en);
-  background-color: #f8fafb;
-  color: #1a2332;
+  background-color: #fafafe;
+  color: #1a1a2e;
   margin: 0;
 }
 
@@ -29,7 +28,7 @@ body {
   font-family: var(--font-ur);
 }
 
-/* Confidence color classes */
+/* Confidence indicators */
 .confidence-high {
   color: #16a34a;
   background-color: #f0fdf4;
@@ -41,4 +40,41 @@ body {
 .confidence-low {
   color: #dc2626;
   background-color: #fef2f2;
+}
+
+/* Subtle animated gradient for auth pages */
+.auth-gradient {
+  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 30%, #ede9fe 60%, #faf5ff 100%);
+  background-size: 200% 200%;
+  animation: shimmer 8s ease infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Recording pulse */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.recording-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 9999px;
+  background: #ef4444;
+  animation: pulse-ring 1.2s ease-out infinite;
+}
+
+/* Progress bar animation */
+@keyframes grow-width {
+  from { width: 0%; }
+}
+
+.animate-grow {
+  animation: grow-width 0.8s ease-out forwards;
 }
