@@ -1,20 +1,11 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
+
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
-
 :root {
-  --purple-50: #faf5ff;
-  --purple-100: #f3e8ff;
-  --purple-200: #e9d5ff;
-  --purple-400: #c084fc;
-  --purple-500: #a855f7;
-  --purple-600: #9333ea;
-  --purple-700: #7e22ce;
-  --purple-800: #6b21a8;
-  --purple-900: #581c87;
   --font-en: 'Plus Jakarta Sans', sans-serif;
-  --font-ur: 'Noto Nastaliq Urdu', serif;
+  --font-ur: 'Noto Sans Arabic', 'Segoe UI', sans-serif;
 }
 
 body {
@@ -24,8 +15,17 @@ body {
   margin: 0;
 }
 
-[dir="rtl"] body {
+[dir="rtl"] body,
+[dir="rtl"] input,
+[dir="rtl"] select,
+[dir="rtl"] textarea,
+[dir="rtl"] button {
   font-family: var(--font-ur);
+}
+
+/* RTL-specific adjustments */
+[dir="rtl"] .flex-row-reverse-rtl {
+  flex-direction: row-reverse;
 }
 
 /* Confidence indicators */
@@ -42,7 +42,7 @@ body {
   background-color: #fef2f2;
 }
 
-/* Subtle animated gradient for auth pages */
+/* Auth page gradient */
 .auth-gradient {
   background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 30%, #ede9fe 60%, #faf5ff 100%);
   background-size: 200% 200%;
