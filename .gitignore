@@ -1,0 +1,18 @@
+# Data - too large for GitHub
+data/raw/
+data/processed/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models
+models/
+
+# Conda
+*.conda
