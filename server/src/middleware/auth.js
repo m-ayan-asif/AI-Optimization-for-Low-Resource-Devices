@@ -14,7 +14,7 @@ function authenticate(req, res, next) {
   try {
     // ===== NEW: Check if token is blacklisted =====
     if (isBlacklisted(token)) {
-      console.log('❌ Blacklisted token detected');
+      console.log('Blacklisted token detected');
       return res.status(401).json({ error: 'Token has been revoked. Please login again.' });
     }
 
