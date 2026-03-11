@@ -2,16 +2,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../models/db');
 const config = require('../config');
+const { addToBlacklist } = require('../models/tokenBlacklist');
 
 async function register(req, res) {
   try {
     const { username, email, password, role, age, gender, region } = req.body;
 
     // Check if user exists
-    const existing = await db.query(
-      'SELECT user_id FROM users WHERE username = $1 OR email = $2',
-      [username, email]
-    );
+    const existing = await db.query('SELECT user_id FROM users WHERE username = $1 OR email = $2', [
+      username,
+      email,
+    ]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Username or email already taken' });
     }
@@ -107,10 +108,7 @@ async function getProfile(req, res) {
       'SELECT user_id, username, email, role FROM users WHERE user_id = $1',
       [userId]
     );
-    const profileResult = await db.query(
-      `SELECT * FROM ${table} WHERE ${idCol} = $1`,
-      [userId]
-    );
+    const profileResult = await db.query(`SELECT * FROM ${table} WHERE ${idCol} = $1`, [userId]);
 
     res.json({
       ...userResult.rows[0],
@@ -122,4 +120,35 @@ async function getProfile(req, res) {
   }
 }
 
-module.exports = { register, login, getProfile };
+// ===== NEW: LOGOUT FUNCTION =====
+async function logout(req, res) {
+  try {
+    const token = req.token; // Attached by authenticate middleware
+    const { userId } = req.user;
+
+    if (!token) {
+      return res.status(400).json({ error: 'No token provided' });
+    }
+
+    // Add token to blacklist
+    addToBlacklist(token);
+
+    // Log logout action
+    await db.query(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4)',
+      [userId, 'logout', 'user', userId]
+    );
+
+    console.log(`✅ User ${userId} logged out successfully`);
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (err) {
+    console.error('Logout error:', err);
+    res.status(500).json({ error: 'Logout failed' });
+  }
+}
+
+module.exports = { register, login, getProfile, logout };
