@@ -34,9 +34,7 @@ export default function Header() {
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to={isAuthenticated ? '/dashboard' : '/login'} className="flex items-center gap-2.5 no-underline">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center shadow-sm">
-            <span className="text-white font-bold text-sm">SS</span>
-          </div>
+            <img src="/src/assets/logo.png" alt="SkinSense" className="w-9 h-9 rounded-lg object-contain" />
           <span className="font-bold text-lg text-gray-900 tracking-tight">{t('app.name')}</span>
         </Link>
 

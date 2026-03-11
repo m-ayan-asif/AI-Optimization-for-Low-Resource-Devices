@@ -32,9 +32,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-purple-200">
-            <span className="text-white font-bold text-2xl">SS</span>
-          </div>
+          <img src="/src/assets/logo.png" alt="SkinSense" className="w-20 h-20 mx-auto mb-5 object-contain" />
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{t('app.name')}</h1>
           <p className="text-gray-400 text-sm mt-1.5">{t('app.tagline')}</p>
         </div>
