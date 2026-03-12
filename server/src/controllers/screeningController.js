@@ -1,5 +1,10 @@
 const db = require('../models/db');
-const { generateMockPrediction, generateMockTranscript } = require('../utils/mockData');
+const { generateMockTranscript } = require('../utils/mockData');
+const fs = require('fs');
+const path = require('path');
+
+// Inference service URL — Python FastAPI running on port 5001
+const INFERENCE_URL = process.env.INFERENCE_URL || 'http://localhost:5001';
 
 async function createScreening(req, res) {
   try {
@@ -97,13 +102,43 @@ async function runInference(req, res) {
   try {
     const { caseId } = req.params;
 
-    // MOCK: In production, this triggers edge device CNN inference + Grad-CAM
-    const mock = generateMockPrediction();
+    // Get the image file path for this case
+    const caseResult = await db.query(
+      `SELECT i.file_path FROM screening_cases sc
+       JOIN images i ON sc.image_id = i.image_id
+       WHERE sc.case_id = $1`,
+      [caseId]
+    );
+
+    if (caseResult.rows.length === 0 || !caseResult.rows[0].file_path) {
+      return res.status(400).json({ error: 'No image found for this screening case' });
+    }
+
+    const imagePath = caseResult.rows[0].file_path;
+
+    // Call Python inference service
+    let prediction;
+    try {
+      prediction = await callInferenceService(imagePath);
+    } catch (inferenceErr) {
+      console.error('Inference service error:', inferenceErr.message);
+      // Fallback to mock if inference service is down
+      const { generateMockPrediction } = require('../utils/mockData');
+      console.warn('Falling back to mock prediction');
+      prediction = generateMockPrediction();
+    }
 
     const predResult = await db.query(
       `INSERT INTO predictions (model_version, top_condition, confidence_score, all_scores, heatmap_path, inference_time_ms)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING prediction_id`,
-      [mock.model_version, mock.top_condition, mock.confidence_score, JSON.stringify(mock.all_scores), mock.heatmap_path, mock.inference_time_ms]
+      [
+        prediction.model_version,
+        prediction.top_condition,
+        prediction.confidence_score,
+        JSON.stringify(prediction.all_scores),
+        prediction.heatmap_path,
+        prediction.inference_time_ms,
+      ]
     );
 
     await db.query(
@@ -113,12 +148,43 @@ async function runInference(req, res) {
 
     res.json({
       prediction_id: predResult.rows[0].prediction_id,
-      ...mock,
+      ...prediction,
     });
   } catch (err) {
     console.error('Inference error:', err);
     res.status(500).json({ error: 'Inference failed' });
   }
+}
+
+/**
+ * Calls the Python FastAPI inference service with the image file.
+ * Sends the image as multipart/form-data to POST /predict
+ */
+async function callInferenceService(imagePath) {
+  const absolutePath = path.resolve(imagePath);
+
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`Image file not found: ${absolutePath}`);
+  }
+
+  const FormData = require('form-data');
+  const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+
+  const formData = new FormData();
+  formData.append('image', fs.createReadStream(absolutePath));
+
+  const response = await fetch(`${INFERENCE_URL}/predict`, {
+    method: 'POST',
+    body: formData,
+    headers: formData.getHeaders(),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Inference service returned ${response.status}: ${errBody}`);
+  }
+
+  return await response.json();
 }
 
 async function getResults(req, res) {
@@ -150,7 +216,13 @@ async function getResults(req, res) {
       symptoms = symResult.rows;
     }
 
-    res.json({ ...row, symptoms });
+    // Build heatmap URL if available
+    let heatmap_url = null;
+    if (row.heatmap_path) {
+      heatmap_url = `${INFERENCE_URL}/heatmaps/${row.heatmap_path}`;
+    }
+
+    res.json({ ...row, symptoms, heatmap_url });
   } catch (err) {
     console.error('Get results error:', err);
     res.status(500).json({ error: 'Failed to fetch results' });

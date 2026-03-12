@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { getConfidenceLevel, getConfidenceColor } from '../utils/imageValidation';
-import { MapPin, Plus, AlertTriangle, Clock, FileText } from 'lucide-react';
+import { MapPin, Plus, AlertTriangle, Clock, FileText, Eye } from 'lucide-react';
 
 export default function ResultsPage() {
   const { t } = useTranslation();
@@ -11,6 +11,7 @@ export default function ResultsPage() {
   const { getResults, loading } = useScreening();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(true);
 
   useEffect(() => {
     if (caseId) {
@@ -71,6 +72,37 @@ export default function ResultsPage() {
           </div>
         )}
       </div>
+
+      {/* Grad-CAM Heatmap */}
+      {data.heatmap_url && (
+        <div className="bg-white rounded-2xl border border-purple-100 p-7 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Eye size={18} className="text-purple-500" />
+              {t('results.heatmap')}
+            </h3>
+            <button
+              onClick={() => setShowHeatmap(!showHeatmap)}
+              className="text-sm text-purple-600 font-medium cursor-pointer bg-transparent border-none hover:text-purple-700"
+            >
+              {showHeatmap ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {showHeatmap && (
+            <>
+              <div className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
+                <img
+                  src={data.heatmap_url}
+                  alt="Grad-CAM Heatmap"
+                  className="w-full object-contain max-h-96"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </div>
+              <p className="text-sm text-gray-400 mt-3">{t('results.heatmapDesc')}</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* All conditions breakdown */}
       <div className="bg-white rounded-2xl border border-gray-100 p-7">

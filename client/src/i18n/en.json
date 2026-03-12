@@ -49,7 +49,7 @@
     "uploadBtn": "Upload Image",
     "captureBtn": "Take Photo",
     "dragDrop": "Drag and drop an image here, or click to browse",
-    "requirements": "JPEG or PNG, minimum 500×500 pixels, clear lighting",
+    "requirements": "JPEG or PNG, minimum 300×300 pixels, clear lighting",
     "voiceTitle": "Describe Your Symptoms",
     "voiceDesc": "Optional: Record a voice description of your symptoms in Urdu or English.",
     "voiceRecord": "Start Recording",
