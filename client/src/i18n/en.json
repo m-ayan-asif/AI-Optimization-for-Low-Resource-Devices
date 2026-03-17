@@ -30,7 +30,26 @@
     "noAccount": "Don't have an account?",
     "hasAccount": "Already have an account?",
     "loginHere": "Login here",
-    "registerHere": "Register here"
+    "registerHere": "Register here",
+    "usernamePlaceholder": "Enter your username",
+    "passwordPlaceholder": "Enter your password",
+    "emailPlaceholder": "your@email.com",
+    "confirmPlaceholder": "Repeat password"
+  },
+  "errors": {
+    "usernameRequired": "Please enter your username.",
+    "usernameTooShort": "Username must be at least 3 characters.",
+    "passwordRequired": "Please enter your password.",
+    "passwordTooShort": "Password must be at least 6 characters.",
+    "passwordMismatch": "Passwords do not match.",
+    "emailRequired": "Please enter your email address.",
+    "emailInvalid": "Please enter a valid email address.",
+    "invalidCredentials": "Incorrect username or password. Please try again.",
+    "userExists": "This username or email is already registered.",
+    "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
+    "networkError": "Unable to connect to the server. Please check your internet connection.",
+    "loginFailed": "Login failed. Please try again.",
+    "registrationFailed": "Registration failed. Please try again."
   },
   "dashboard": {
     "welcome": "Welcome back",
@@ -73,7 +92,11 @@
     "disclaimer": "This is a preliminary screening result, not a medical diagnosis. Please consult a dermatologist for professional evaluation.",
     "findClinic": "Find Nearest Clinic",
     "newScreening": "New Screening",
-    "inferenceTime": "Analysis completed in"
+    "inferenceTime": "Analysis completed in",
+    "unidentified": "Condition Could Not Be Identified",
+    "unidentifiedDesc": "The AI screening could not identify the condition with sufficient confidence. This may be because the image quality is poor, the condition is outside the scope of this system, or the affected area is not clearly visible. Please consult a dermatologist for a professional evaluation.",
+    "inconclusive": "Inconclusive",
+    "lowConfidenceNote": "Closest match: {{condition}} — but confidence is too low to be reliable."
   },
   "history": {
     "title": "Screening History",

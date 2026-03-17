@@ -139,7 +139,7 @@ async function logout(req, res) {
       [userId, 'logout', 'user', userId]
     );
 
-    console.log(`✅ User ${userId} logged out successfully`);
+    console.log(`User ${userId} logged out successfully`);
 
     res.json({
       success: true,

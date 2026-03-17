@@ -156,10 +156,6 @@ async function runInference(req, res) {
   }
 }
 
-/**
- * Calls the Python FastAPI inference service with the image file.
- * Sends the image as multipart/form-data to POST /predict
- */
 async function callInferenceService(imagePath) {
   const absolutePath = path.resolve(imagePath);
 
