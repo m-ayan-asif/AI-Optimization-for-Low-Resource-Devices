@@ -19,12 +19,17 @@ export default function Header() {
   }
 
   const navLinks = isAuthenticated
-    ? [
-        { to: '/dashboard', label: t('nav.home') },
-        { to: '/screening', label: t('nav.screening') },
-        { to: '/history', label: t('nav.history') },
-        { to: '/clinics', label: t('nav.clinics') },
-      ]
+    ? user?.role === 'clinician'
+      ? [
+          { to: '/clinician/dashboard', label: t('nav.clinicianDashboard') },
+          { to: '/clinician/history', label: t('nav.clinicianHistory') },
+        ]
+      : [
+          { to: '/dashboard', label: t('nav.home') },
+          { to: '/screening', label: t('nav.screening') },
+          { to: '/history', label: t('nav.history') },
+          { to: '/clinics', label: t('nav.clinics') },
+        ]
     : [];
 
   const isActive = (path) => location.pathname === path;
@@ -33,7 +38,7 @@ export default function Header() {
     <header className="bg-white/80 backdrop-blur-md border-b border-purple-100 sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link to={isAuthenticated ? '/dashboard' : '/login'} className="flex items-center gap-2.5 no-underline">
+        <Link to={isAuthenticated ? (user?.role === 'clinician' ? '/clinician/dashboard' : '/dashboard') : '/login'} className="flex items-center gap-2.5 no-underline">
             <img src="/src/assets/logo.png" alt="SkinSense" className="w-9 h-9 rounded-lg object-contain" />
           <span className="font-bold text-lg text-gray-900 tracking-tight">{t('app.name')}</span>
         </Link>

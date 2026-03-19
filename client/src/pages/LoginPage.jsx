@@ -29,8 +29,8 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await login(form.username.trim(), form.password);
-      navigate('/dashboard');
+      const userData = await login(form.username.trim(), form.password);
+      navigate(userData.role === 'clinician' ? '/clinician/dashboard' : '/dashboard');
     } catch (err) {
       const status = err.response?.status;
       const serverMsg = err.response?.data?.error;

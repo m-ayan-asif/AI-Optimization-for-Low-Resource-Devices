@@ -8,6 +8,7 @@ const config = require('./src/config');
 const authRoutes = require('./src/routes/auth');
 const screeningRoutes = require('./src/routes/screening');
 const clinicRoutes = require('./src/routes/clinics');
+const clinicianRoutes = require('./src/routes/clinicianRoutes');
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/uploads', express.static(uploadDir));
 app.use('/api/auth', authRoutes);
 app.use('/api/screening', screeningRoutes);
 app.use('/api/clinics', clinicRoutes);
+app.use('/api/clinician', clinicianRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

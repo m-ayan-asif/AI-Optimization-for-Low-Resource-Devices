@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { getConfidenceLevel, getConfidenceColor } from '../utils/imageValidation';
-import { MapPin, Plus, AlertTriangle, Clock, FileText, Eye, ShieldAlert } from 'lucide-react';
+import { MapPin, Plus, AlertTriangle, Clock, FileText, Eye, ShieldAlert, CheckCircle2, XCircle, PenLine, Stethoscope } from 'lucide-react';
 
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
@@ -164,6 +164,11 @@ export default function ResultsPage() {
         </div>
       )}
 
+      {/* Clinician Review */}
+      {data.clinician_decision && (
+        <ClinicianReviewCard data={data} t={t} />
+      )}
+
       {/* Disclaimer */}
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-3.5">
         <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
@@ -184,6 +189,67 @@ export default function ResultsPage() {
         >
           <Plus size={16} /> {t('results.newScreening')}
         </Link>
+      </div>
+    </div>
+  );
+}
+
+const DECISION_CONFIG = {
+  accept: {
+    icon: <CheckCircle2 size={18} className="text-green-500 shrink-0" />,
+    label: (t) => t('clinician.feedback.accept'),
+    cardClass: 'bg-green-50 border-green-200',
+    badgeClass: 'bg-green-100 text-green-800 border-green-200',
+  },
+  dispute: {
+    icon: <XCircle size={18} className="text-amber-500 shrink-0" />,
+    label: (t) => t('clinician.feedback.dispute'),
+    cardClass: 'bg-amber-50 border-amber-200',
+    badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+  },
+  correct: {
+    icon: <PenLine size={18} className="text-blue-500 shrink-0" />,
+    label: (t) => t('clinician.feedback.correct'),
+    cardClass: 'bg-blue-50 border-blue-200',
+    badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
+  },
+};
+
+function ClinicianReviewCard({ data, t }) {
+  const cfg = DECISION_CONFIG[data.clinician_decision];
+  if (!cfg) return null;
+
+  return (
+    <div className={`rounded-2xl border p-6 ${cfg.cardClass}`}>
+      <div className="flex items-center gap-2 mb-4">
+        <Stethoscope size={18} className="text-gray-600" />
+        <h3 className="font-semibold text-gray-900">{t('results.clinicianReview')}</h3>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        {cfg.icon}
+        <span className={`text-sm font-semibold px-3 py-1 rounded-full border ${cfg.badgeClass}`}>
+          {cfg.label(t)}
+        </span>
+      </div>
+
+      {data.corrected_diagnosis && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 mb-1">{t('results.clinicianCorrectedDiagnosis')}</p>
+          <p className="text-sm font-semibold text-gray-900">{data.corrected_diagnosis}</p>
+        </div>
+      )}
+
+      {data.clinician_notes && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 mb-1">{t('results.clinicianNotes')}</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{data.clinician_notes}</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-4 pt-3 border-t border-black/10">
+        <Clock size={12} />
+        {t('results.reviewedBy')} {data.reviewer_username} · {new Date(data.reviewed_at).toLocaleString()}
       </div>
     </div>
   );

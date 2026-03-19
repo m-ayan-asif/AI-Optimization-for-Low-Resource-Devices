@@ -32,6 +32,11 @@ async function register(req, res) {
         'INSERT INTO patient_profiles (patient_id, age, gender, region) VALUES ($1, $2, $3, $4)',
         [user.user_id, age || null, gender || null, region || null]
       );
+    } else if (user.role === 'clinician') {
+      await db.query(
+        'INSERT INTO clinician_profiles (clinician_id) VALUES ($1)',
+        [user.user_id]
+      );
     }
 
     // Generate token

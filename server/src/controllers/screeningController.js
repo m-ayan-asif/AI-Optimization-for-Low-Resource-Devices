@@ -189,10 +189,14 @@ async function getResults(req, res) {
 
     const caseResult = await db.query(
       `SELECT sc.*, p.top_condition, p.confidence_score, p.all_scores, p.heatmap_path, p.inference_time_ms, p.model_version,
-              vt.transcript_text, vt.language as transcript_language
+              vt.transcript_text, vt.language as transcript_language,
+              cf.decision as clinician_decision, cf.corrected_diagnosis, cf.notes as clinician_notes,
+              cf.created_at as reviewed_at, cu.username as reviewer_username
        FROM screening_cases sc
        LEFT JOIN predictions p ON sc.prediction_id = p.prediction_id
        LEFT JOIN voice_transcripts vt ON sc.transcript_id = vt.transcript_id
+       LEFT JOIN clinician_feedback cf ON cf.case_id = sc.case_id
+       LEFT JOIN users cu ON cf.clinician_id = cu.user_id
        WHERE sc.case_id = $1 AND sc.patient_id = $2`,
       [caseId, req.user.userId]
     );
