@@ -11,7 +11,7 @@ const STEPS = ['upload', 'voice', 'analysis'];
 export default function ScreeningPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { createCase, uploadImage, submitVoice, runInference, loading, error } = useScreening();
+  const { createCase, uploadImage, submitVoice, runInference, loading, error, setError } = useScreening();
   const { isRecording, audioBlob, duration, startRecording, stopRecording, clearRecording, error: micError } = useVoiceRecorder();
 
   const [step, setStep] = useState(0);
@@ -45,7 +45,9 @@ export default function ScreeningPage() {
       setCaseId(id);
       await uploadImage(id, imageFile);
       setStep(1);
-    } catch (_) {}
+    } catch (err) {
+      // error is already set in the hook; no-op here keeps TS happy
+    }
   }
 
   async function goToAnalysis(skipVoice = false) {
@@ -56,7 +58,9 @@ export default function ScreeningPage() {
       setStep(2);
       await runInference(caseId);
       navigate(`/results/${caseId}`);
-    } catch (_) {}
+    } catch (err) {
+      setStep(1); // bounce back so the user sees the error banner
+    }
   }
 
   return (

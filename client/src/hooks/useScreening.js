@@ -45,7 +45,14 @@ export function useScreening() {
     setError(null);
     try {
       const formData = new FormData();
-      if (audioBlob) formData.append('audio', audioBlob, 'recording.webm');
+      if (audioBlob) {
+        // Browser hook converts to WAV before this point; fall back to webm extension if not
+        const ext = audioBlob.type.includes('wav') ? '.wav'
+          : audioBlob.type.includes('ogg') ? '.ogg'
+          : audioBlob.type.includes('mp4') ? '.mp4'
+          : '.webm';
+        formData.append('audio', audioBlob, `recording${ext}`);
+      }
       formData.append('language', language);
       const res = await api.post(`/screening/${id}/voice`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -112,6 +119,7 @@ export function useScreening() {
     caseId,
     loading,
     error,
+    setError,
     results,
     createCase,
     uploadImage,

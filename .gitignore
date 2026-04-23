@@ -1,8 +1,38 @@
+# ── Dependencies ──────────────────────────────────────────────────────
 node_modules/
+.venv/
+venv/
+
+# ── Build output ──────────────────────────────────────────────────────
 dist/
-.env
-*.log
-.DS_Store
-uploads/
 *.local
+
+# ── Environment / secrets ─────────────────────────────────────────────
+.env
+server/.env
+
+# ── Logs ──────────────────────────────────────────────────────────────
+*.log
+
+# ── OS artefacts ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Python cache ──────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+
+# ── ML model weights (large binaries — download separately) ───────────
+inference/models/*.pth
+inference/models/asr/
+*.safetensors
+*.bin
+
+# ── Inference outputs (generated at runtime) ──────────────────────────
+inference/heatmaps/
 heatmaps/
+
+# ── Patient uploads (sensitive medical data) ──────────────────────────
+uploads/
+server/uploads/

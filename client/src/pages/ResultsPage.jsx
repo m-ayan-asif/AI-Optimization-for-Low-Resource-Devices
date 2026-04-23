@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { getConfidenceLevel, getConfidenceColor } from '../utils/imageValidation';
-import { MapPin, Plus, AlertTriangle, Clock, FileText, Eye, ShieldAlert, CheckCircle2, XCircle, PenLine, Stethoscope } from 'lucide-react';
+import { MapPin, Plus, AlertTriangle, Clock, FileText, Eye, ShieldAlert, CheckCircle2, XCircle, PenLine, Stethoscope, Mic } from 'lucide-react';
 
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
@@ -147,19 +147,42 @@ export default function ResultsPage() {
         </div>
       </div>
 
-      {/* Extracted symptoms */}
-      {data.symptoms && data.symptoms.length > 0 && (
+      {/* Voice recording / transcript */}
+      {data.transcript_id && (
         <div className="bg-white rounded-2xl border border-gray-100 p-7">
-          <h3 className="font-semibold text-gray-900 mb-4">{t('results.symptoms')}</h3>
-          <div className="flex flex-wrap gap-2">
-            {data.symptoms.map((s, i) => (
-              <span key={i} className="px-3.5 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">
-                {s.keyword}
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Mic size={18} className="text-purple-500" />
+              {t('results.symptoms')}
+            </h3>
+            {data.transcript_language && (
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
+                {data.transcript_language === 'ur' ? 'Urdu' : 'English'}
               </span>
-            ))}
+            )}
           </div>
-          {data.transcript_text && (
-            <p className="text-sm text-gray-400 mt-3 italic leading-relaxed">"{data.transcript_text}"</p>
+
+          {data.transcript_text ? (
+            <p className="text-sm text-gray-700 leading-relaxed italic bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              "{data.transcript_text}"
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              Voice recorded — transcription processing.
+            </p>
+          )}
+
+          {data.symptoms && data.symptoms.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-50">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2.5">Keywords</p>
+              <div className="flex flex-wrap gap-2">
+                {data.symptoms.map((s, i) => (
+                  <span key={i} className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">
+                    {s.keyword}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

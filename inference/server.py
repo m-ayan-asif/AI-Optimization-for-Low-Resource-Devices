@@ -5,6 +5,12 @@ Called by the Express backend when a screening is submitted.
 """
 
 import io
+import os
+import time
+import uuid
+import tempfile
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as torchF
@@ -16,13 +22,12 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 import cv2
-import os
-import time
-import uuid
+from transformers import pipeline as hf_pipeline
 
 # ── Config ────────────────────────────────────────────────────────────
 MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_distilled.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
+ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "./models/asr/whisper-urdu")
 PORT = int(os.environ.get("INFERENCE_PORT", 5001))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -144,6 +149,19 @@ grad_cam = GradCAM(model)
 # Ensure heatmap directory exists
 os.makedirs(HEATMAP_DIR, exist_ok=True)
 
+# ── Load ASR Model ────────────────────────────────────────────────────
+asr_pipe = None
+if os.path.isdir(ASR_MODEL_PATH):
+    print(f"Loading ASR model from {ASR_MODEL_PATH} ...")
+    asr_pipe = hf_pipeline(
+        "automatic-speech-recognition",
+        model=ASR_MODEL_PATH,
+        device=0 if torch.cuda.is_available() else -1,
+    )
+    print("ASR model ready.")
+else:
+    print(f"ASR model not found at {ASR_MODEL_PATH}. Run download_asr_model.py to enable transcription.")
+
 
 # ── FastAPI App ───────────────────────────────────────────────────────
 app = FastAPI(title="SkinSense Inference Service", version="1.0.0")
@@ -161,6 +179,7 @@ def health():
     return {
         "status": "ok",
         "model": "MobileNetV3-Large (distilled)",
+        "asr_model": "whisper-large-v3-turbo-urdu" if asr_pipe is not None else "not loaded",
         "device": str(DEVICE),
         "classes": CLASS_NAMES,
     }
@@ -215,6 +234,76 @@ async def predict(image: UploadFile = File(...)):
         "heatmap_path": heatmap_filename,
         "inference_time_ms": inference_time_ms,
     }
+
+
+import traceback
+import soundfile as sf
+
+
+def load_audio_wav(file_path: str, target_sr: int = 16000) -> np.ndarray:
+    """Read a WAV file with soundfile (no external dependencies)."""
+    data, sr = sf.read(file_path, dtype="float32", always_2d=True)
+    audio = data.mean(axis=1)  # mix to mono
+    if sr != target_sr:
+        # Resample only if the browser sent something other than 16 kHz
+        import librosa
+        audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
+    return audio.astype(np.float32)
+
+
+@app.post("/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    if asr_pipe is None:
+        print("[transcribe] ERROR: ASR model is not loaded.")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "ASR model not loaded. Run inference/download_asr_model.py first."},
+        )
+
+    contents = await audio.read()
+    if not contents:
+        print("[transcribe] ERROR: received empty audio file.")
+        return JSONResponse(status_code=400, content={"error": "Empty audio file received."})
+
+    suffix = Path(audio.filename).suffix if audio.filename else ".wav"
+    print(f"[transcribe] Received {len(contents)} bytes, filename='{audio.filename}', suffix='{suffix}'")
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    try:
+        print(f"[transcribe] Loading audio from {tmp_path} ...")
+        audio_array = load_audio_wav(tmp_path)
+        print(f"[transcribe] Audio loaded: {len(audio_array)} samples at 16 kHz ({len(audio_array)/16000:.1f}s)")
+
+        print("[transcribe] Running Whisper ASR ...")
+        result = asr_pipe(
+            {"array": audio_array, "sampling_rate": 16000},
+            generate_kwargs={"language": "urdu", "task": "transcribe"},
+        )
+
+        transcript_text = result["text"].strip()
+        print(f"[transcribe] Transcript: '{transcript_text}'")
+
+        tokens = transcript_text.split()
+        keywords = list(dict.fromkeys(t for t in tokens if len(t) > 3))[:10]
+
+        return {
+            "transcript_text": transcript_text,
+            "language": "ur",
+            "confidence_score": 0.90,
+            "keywords": keywords,
+        }
+    except Exception as e:
+        print(f"[transcribe] EXCEPTION: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 @app.get("/heatmaps/{filename}")
