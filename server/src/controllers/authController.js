@@ -8,6 +8,14 @@ async function register(req, res) {
   try {
     const { username, email, password, role, age, gender, region } = req.body;
 
+    // Validate optional profile fields
+    if (age !== undefined && age !== null && age !== '') {
+      const ageNum = Number(age);
+      if (!Number.isInteger(ageNum) || ageNum < 1 || ageNum > 120) {
+        return res.status(400).json({ error: 'Age must be a whole number between 1 and 120.' });
+      }
+    }
+
     // Check if user exists
     const existing = await db.query('SELECT user_id FROM users WHERE username = $1 OR email = $2', [
       username,

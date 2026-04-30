@@ -99,6 +99,53 @@ describe('POST /api/auth/register', () => {
     expect(res.body.user.role).toBe('patient');
   });
 
+  it('ERROR: returns 400 for a negative age', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: -5 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/age/i);
+  });
+
+  it('ERROR: returns 400 for an age above 120', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 999 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/age/i);
+  });
+
+  it('ERROR: returns 400 for a decimal age', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 25.5 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/age/i);
+  });
+
+  it('ERROR: returns 400 for age zero', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/age/i);
+  });
+
+  it('SUCCESS: accepts valid boundary ages (1 and 120)', async () => {
+    for (const age of [1, 120]) {
+      db.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ user_id: age, username: `user${age}`, role: 'patient' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({ username: `user${age}`, email: `user${age}@test.com`, password: 'pass123', age });
+      expect(res.status).toBe(201);
+    }
+  });
+
   it('ERROR: returns 409 when username or email is already taken', async () => {
     db.query.mockResolvedValueOnce({ rows: [{ user_id: 99 }] }); // duplicate found
 

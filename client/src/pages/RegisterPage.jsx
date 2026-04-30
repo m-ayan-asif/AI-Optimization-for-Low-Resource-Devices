@@ -33,6 +33,10 @@ export default function RegisterPage() {
     if (!form.password) { setError(t('errors.passwordRequired')); return; }
     if (form.password.length < 6) { setError(t('errors.passwordTooShort')); return; }
     if (form.password !== form.confirmPassword) { setError(t('errors.passwordMismatch')); return; }
+    if (form.age !== '' && (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age)))) {
+      setError('Please enter a valid age (1–120).');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -138,7 +142,7 @@ export default function RegisterPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className={labelClass}>{t('auth.age')}</label>
-                  <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" />
+                  <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" min="1" max="120" />
                 </div>
                 <div>
                   <label className={labelClass}>{t('auth.gender')}</label>
