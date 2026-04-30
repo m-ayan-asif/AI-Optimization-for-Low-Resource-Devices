@@ -36,3 +36,6 @@ heatmaps/
 # ── Patient uploads (sensitive medical data) ──────────────────────────
 uploads/
 server/uploads/
+
+# ── Claude File ──────────────────────────
+CLAUDE.md
