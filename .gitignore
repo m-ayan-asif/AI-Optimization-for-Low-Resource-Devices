@@ -39,3 +39,10 @@ server/uploads/
 
 # ── Claude File ──────────────────────────
 CLAUDE.md
+
+# ── Test Reports & Coverage ───────────────────────────────────────────
+server/coverage/
+coverage/
+.pytest_cache/
+.coverage
+htmlcov/
