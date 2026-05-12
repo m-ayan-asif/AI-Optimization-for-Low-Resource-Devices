@@ -78,3 +78,76 @@ body {
 .animate-grow {
   animation: grow-width 0.8s ease-out forwards;
 }
+
+/* Leaflet map styles */
+.leaflet-container {
+  border-radius: 1rem;
+  z-index: 0;
+  font-family: var(--font-en);
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  border: 1px solid #f3e8ff;
+}
+
+.leaflet-popup-content {
+  margin: 12px 16px;
+  font-family: var(--font-en);
+  line-height: 1.5;
+}
+
+.leaflet-popup-tip {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.clinic-popup-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1a1a2e;
+  margin-bottom: 4px;
+}
+
+.clinic-popup-address {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.clinic-popup-phone {
+  font-size: 0.78rem;
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+.clinic-popup-directions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 5px 12px;
+  background: #f5f3ff;
+  color: #7c3aed;
+  border: 1px solid #ede9fe;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.clinic-popup-directions:hover {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+/* Map toggle button animation */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.map-appear {
+  animation: slideDown 0.35s ease-out;
+}

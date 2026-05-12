@@ -65,16 +65,66 @@ function generateMockTranscript(language) {
 }
 
 const MOCK_CLINICS = [
-  { name: 'PIMS Hospital', city: 'Islamabad', region: 'Islamabad', address: 'G-8/3, Islamabad', phone: '051-9261170', lat: 33.6938, lng: 73.0451 },
-  { name: 'Holy Family Hospital', city: 'Rawalpindi', region: 'Punjab', address: 'Satellite Town, Rawalpindi', phone: '051-9290301', lat: 33.6007, lng: 73.0679 },
-  { name: 'DHQ Hospital', city: 'Rawalpindi', region: 'Punjab', address: 'Committee Chowk, Rawalpindi', phone: '051-9270871', lat: 33.5972, lng: 73.0479 },
-  { name: 'Benazir Bhutto Hospital', city: 'Rawalpindi', region: 'Punjab', address: 'Murree Road, Rawalpindi', phone: '051-9290601', lat: 33.6100, lng: 73.0550 },
-  { name: 'Shifa International Hospital', city: 'Islamabad', region: 'Islamabad', address: 'H-8/4, Islamabad', phone: '051-8464646', lat: 33.6860, lng: 73.0238 },
-  { name: 'Fauji Foundation Hospital', city: 'Rawalpindi', region: 'Punjab', address: 'The Mall, Rawalpindi', phone: '051-9270942', lat: 33.5980, lng: 73.0530 },
-  { name: 'Nishtar Hospital', city: 'Multan', region: 'Punjab', address: 'Nishtar Road, Multan', phone: '061-9201342', lat: 30.1984, lng: 71.4687 },
-  { name: 'Mayo Hospital', city: 'Lahore', region: 'Punjab', address: 'Anarkali, Lahore', phone: '042-99211137', lat: 31.5656, lng: 74.3199 },
-  { name: 'Jinnah Hospital', city: 'Lahore', region: 'Punjab', address: 'Allama Iqbal Medical College, Lahore', phone: '042-99231401', lat: 31.5204, lng: 74.3587 },
-  { name: 'Lady Reading Hospital', city: 'Peshawar', region: 'KPK', address: 'Hospital Road, Peshawar', phone: '091-9211430', lat: 34.0123, lng: 71.5785 },
+  {
+    name: 'PIMS Hospital', city: 'Islamabad', region: 'Islamabad',
+    address: 'G-8/3, Islamabad', phone: '051-9261170',
+    lat: 33.6938, lng: 73.0451,
+    mapsQuery: 'PIMS Hospital Islamabad',
+  },
+  {
+    name: 'Holy Family Hospital', city: 'Rawalpindi', region: 'Punjab',
+    address: 'Satellite Town, Rawalpindi', phone: '051-9290301',
+    lat: 33.6007, lng: 73.0679,
+    mapsQuery: 'Holy Family Hospital Rawalpindi Pakistan',
+  },
+  {
+    name: 'Rawalpindi Teaching Hospital (RTH)', city: 'Rawalpindi', region: 'Punjab',
+    address: 'Raja Bazar, Rawalpindi', phone: '051-9270871',
+    lat: 33.5972, lng: 73.0479,
+    mapsQuery: 'Rawalpindi Teaching Hospital RTH Rawalpindi',
+  },
+  {
+    name: 'Benazir Bhutto Hospital', city: 'Rawalpindi', region: 'Punjab',
+    address: 'Murree Road, Rawalpindi', phone: '051-9290601',
+    lat: 33.6100, lng: 73.0550,
+    mapsQuery: 'Benazir Bhutto Hospital Rawalpindi',
+  },
+  {
+    name: 'Shifa International Hospital', city: 'Islamabad', region: 'Islamabad',
+    address: 'H-8/4, Islamabad', phone: '051-8464646',
+    lat: 33.6860, lng: 73.0238,
+    mapsQuery: 'Shifa International Hospital Islamabad',
+  },
+  {
+    name: 'Fauji Foundation Hospital', city: 'Rawalpindi', region: 'Punjab',
+    address: 'Jhelum Road, Rawalpindi', phone: '051-9270942',
+    lat: 33.5980, lng: 73.0530,
+    mapsQuery: 'Fauji Foundation Hospital Rawalpindi',
+  },
+  {
+    name: 'Nishtar Hospital', city: 'Multan', region: 'Punjab',
+    address: 'Nishtar Road, Multan', phone: '061-9201342',
+    lat: 30.1984, lng: 71.4687,
+    mapsQuery: 'Nishtar Hospital Multan',
+  },
+  {
+    name: 'Mayo Hospital', city: 'Lahore', region: 'Punjab',
+    address: 'Anarkali, Lahore', phone: '042-99211137',
+    lat: 31.5656, lng: 74.3199,
+    mapsQuery: 'Mayo Hospital Lahore',
+  },
+  {
+    name: 'Jinnah Hospital', city: 'Lahore', region: 'Punjab',
+    address: 'Allama Iqbal Medical College, Lahore', phone: '042-99231401',
+    lat: 31.5204, lng: 74.3587,
+    mapsQuery: 'Jinnah Hospital Lahore',
+  },
+  {
+    name: 'Lady Reading Hospital', city: 'Peshawar', region: 'KPK',
+    address: 'Hospital Road, Peshawar', phone: '091-9211430',
+    lat: 34.0123, lng: 71.5785,
+    mapsQuery: 'Lady Reading Hospital Peshawar',
+  },
 ];
 
 module.exports = {
