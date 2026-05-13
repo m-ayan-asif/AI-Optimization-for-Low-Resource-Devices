@@ -1,8 +1,27 @@
+/**
+ * Unit tests for the useScreening React hook.
+ *
+ * The hook wraps every API call the ScreeningPage makes: create, upload-image,
+ * voice, inference, results, and history.  All tests run in isolation by
+ * mocking the shared Axios instance at '../utils/api'.
+ *
+ * Mocking approach:
+ *  - vi.mock() is hoisted before imports, so api.post / api.get are stubs
+ *    by the time the hook code is evaluated.
+ *  - mockResolvedValueOnce() / mockRejectedValueOnce() queue one response per
+ *    call; each test only needs to provide responses for the calls it triggers.
+ *  - vi.clearAllMocks() in beforeEach resets call counts and queued values so
+ *    stubs don't bleed across describe blocks.
+ *
+ * React state updates inside hook callbacks must be wrapped in act() so React
+ * flushes its update queue before assertions run.
+ */
+
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useScreening } from '../hooks/useScreening';
 
-// Mock the axios instance used by the hook
+// vi.mock() is hoisted — this runs before the import below is resolved.
 vi.mock('../utils/api', () => ({
   default: {
     post: vi.fn(),
@@ -12,6 +31,7 @@ vi.mock('../utils/api', () => ({
 
 import api from '../utils/api';
 
+// Reset call counts and queued mock return values between tests.
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -64,6 +84,9 @@ describe('createCase()', () => {
   });
 
   it('EDGE: sets loading=true during request and false afterwards', async () => {
+    // Use a manually-controlled Promise so we can assert the in-flight loading
+    // state before the request resolves.  Calling act() without await lets the
+    // hook start (and set loading=true) without completing the async work.
     let resolveFn;
     api.post.mockReturnValueOnce(new Promise((res) => { resolveFn = res; }));
 
@@ -100,6 +123,8 @@ describe('uploadImage()', () => {
     await act(async () => { data = await result.current.uploadImage('case-1', file); });
 
     expect(data).toEqual({ image_id: 42 });
+    // Verify the hook sends FormData with the correct multipart header so the
+    // server's multer middleware can read the file field.
     expect(api.post).toHaveBeenCalledWith(
       '/screening/case-1/upload-image',
       expect.any(FormData),
@@ -134,6 +159,8 @@ describe('submitVoice()', () => {
   });
 
   it('EDGE: uses .wav extension for audio/wav blobs', async () => {
+    // The hook derives a filename from the blob MIME type so the server's multer
+    // can determine the format.  Inspect the FormData entries directly to confirm.
     api.post.mockResolvedValueOnce({ data: { transcript_id: 1 } });
     const blob = new Blob(['wav'], { type: 'audio/wav' });
 

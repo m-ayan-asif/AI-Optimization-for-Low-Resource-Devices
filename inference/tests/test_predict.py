@@ -1,9 +1,15 @@
 """
 Tests for GET /health and POST /predict.
 
-The model runs with random weights (no weights file at MODEL_PATH), so
-predictions are meaningless, but the response *shape* and *status codes*
-are fully exercised.
+The model runs with random weights (MODEL_PATH points to a nonexistent file),
+so the predicted class and confidence values are arbitrary.  What we can still
+assert rigorously:
+  - Response shape: all required JSON keys are present.
+  - Numeric contracts: confidence_score in [0, 1]; all_scores sums to ~1.0
+    (softmax property holds regardless of weights).
+  - Class membership: top_condition is one of the seven valid class names.
+  - Side effects: heatmap PNG is written to HEATMAP_DIR after a successful call.
+  - Error handling: non-image bytes, empty body, and truncated JPEG all 400.
 """
 
 import os
@@ -68,11 +74,15 @@ class TestPredict:
         assert set(body["all_scores"].keys()) == expected
 
     def test_success_all_scores_sum_approximately_to_one(self, client, png_bytes):
+        # Softmax outputs always sum to 1 regardless of the input weights.
+        # A tolerance of 0.01 accounts for float32 rounding during JSON serialisation.
         body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
         total = sum(body["all_scores"].values())
         assert abs(total - 1.0) < 0.01, f"Scores sum to {total}, expected ~1.0"
 
     def test_success_heatmap_file_is_written_to_disk(self, client, png_bytes):
+        # Verifies the side effect: /predict must save the Grad-CAM overlay PNG
+        # to HEATMAP_DIR so GET /heatmaps/{filename} can serve it later.
         body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
         heatmap_filename = body["heatmap_path"]
         assert heatmap_filename.endswith(".png")
@@ -103,6 +113,8 @@ class TestPredict:
         assert res.status_code == 400
 
     def test_edge_large_image_is_resized_and_processed(self, client):
+        # The preprocessing pipeline must resize any input to 224×224 before
+        # feeding it to the model.  A 2048×2048 image must still succeed.
         from PIL import Image
         import io
         img = Image.new("RGB", (2048, 2048), color=(128, 64, 32))

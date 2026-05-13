@@ -1,11 +1,28 @@
 """
 Unit tests for utility functions in server.py.
 
-Focuses on:
-  - load_audio_wav  – reads a WAV file and returns a float32 array at 16 kHz
-  - encodePcmWav logic (tested indirectly via WAV round-trip)
-  - GradCAM output shape and value range
-  - create_heatmap_overlay output shape
+Functions under test:
+  load_audio_wav(path)
+    Reads a WAV file with soundfile and returns a float32 numpy array at 16 kHz.
+    Tests verify dtype, length (sample count), shape (1-D), and that silence
+    decodes to all-zeros.
+
+  GradCAM.generate(tensor, class_idx=None)
+    Hooks into the last convolutional layer (model.features[-1]) to produce a
+    class activation map.  The model runs with RANDOM weights in tests (no .pth
+    file exists at MODEL_PATH), so prediction values are meaningless.  We assert
+    only on structural properties that hold regardless of weights: the CAM is
+    2-D, values are in [0, 1] (normalised), and a forced class_idx is honoured.
+
+  create_heatmap_overlay(pil_image, cam)
+    Blends the Grad-CAM heatmap over the original image using OpenCV colormaps.
+    Tests verify: numpy array output, 3 channels (RGB), dimensions match
+    IMG_SIZE, uint8 dtype, pixel values in [0, 255], and that degenerate all-zero
+    or all-one CAMs don't crash or produce out-of-range values.
+
+Helper _make_wav():
+  Manually constructs a RIFF/WAV byte buffer and writes it to a temp file.
+  Building the header by hand avoids any binary fixture file dependency.
 """
 
 import io
@@ -26,7 +43,12 @@ from server import load_audio_wav, create_heatmap_overlay, GradCAM, model, CLASS
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _make_wav(num_samples: int, sample_rate: int = 16000) -> str:
-    """Write a silent WAV file to a temp path and return the path."""
+    """Write a minimal silent WAV file to a temp path and return the path.
+
+    The RIFF/WAV header is constructed manually using struct.pack so that
+    each field offset is explicit and there is no dependency on an external
+    audio library for fixture creation.
+    """
     data_size = num_samples * 2
     buf = io.BytesIO()
     buf.write(b"RIFF"); buf.write(struct.pack("<I", 36 + data_size))
@@ -98,6 +120,11 @@ class TestLoadAudioWav:
 # ─── GradCAM ─────────────────────────────────────────────────────────────────
 
 class TestGradCAM:
+    # All tests in this class run the model forward pass with random weights.
+    # The gradient-based CAM computation is deterministic for a given input
+    # tensor, so the structural assertions (shape, range) are reliable even
+    # though the selected class and CAM values change each test run.
+
     def test_success_cam_output_is_2d_numpy_array(self):
         import torch
         from torchvision import transforms

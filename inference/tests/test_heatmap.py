@@ -1,9 +1,20 @@
 """
 Tests for GET /heatmaps/{filename}.
 
-A real heatmap PNG is created by running /predict first, then its filename
-is retrieved from the response.  We also test 404 paths and a path-traversal
-attempt.
+How real heatmap files are obtained:
+  _generate_heatmap_filename() calls POST /predict with a valid PNG and reads
+  the 'heatmap_path' field from the response.  The file was written to
+  HEATMAP_DIR (a real temp directory from conftest.py) during that call, so
+  subsequent GET requests can actually read it off disk.
+
+Test categories:
+  Success  — existing file returns 200 with content-type image/png and a valid
+             PNG byte signature (0x89 PNG\\r\\n\\x1a\\n).
+  Error    — nonexistent filenames return 404 with an 'error' key in the body.
+  Security — path-traversal payloads (../../../etc/passwd, %2Fetc%2Fpasswd)
+             must NOT return 200.  The server should sanitise filenames and
+             return 400/404/422 instead.
+  Edge     — a filename with no extension and an empty path segment are also 404.
 """
 
 import os

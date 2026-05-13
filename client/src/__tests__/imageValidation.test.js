@@ -1,3 +1,24 @@
+/**
+ * Unit tests for the imageValidation utility module.
+ *
+ * Four pure functions are tested:
+ *  - validateImageFile(file)       → synchronous; checks MIME type and file size.
+ *  - validateImageDimensions(file) → async; checks pixel dimensions via Image().
+ *  - getConfidenceLevel(score)     → maps a float to 'high' / 'medium' / 'low'.
+ *  - getConfidenceColor(score)     → maps a float to a CSS hex colour string.
+ *
+ * Dimension tests:
+ *  - The browser Image() constructor is not available in jsdom's default config,
+ *    so we replace global.Image with a mock factory (mockImage) that fires
+ *    onload/onerror via setTimeout, matching the real async browser behaviour.
+ *  - File.size is a read-only property in jsdom; Object.defineProperty() lets
+ *    us override it to test size limits without creating a real multi-megabyte
+ *    buffer.
+ *
+ * Boundary value tests confirm the exact thresholds in each function so any
+ * change to the constants will immediately break a test.
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   validateImageFile,
@@ -26,6 +47,8 @@ describe('validateImageFile()', () => {
   });
 
   it('SUCCESS: accepts a file at exactly the 10 MB size limit', () => {
+    // File.size is read-only in jsdom; Object.defineProperty overrides it
+    // so we can test the boundary without allocating a real 10 MB buffer.
     const file = new File(['data'], 'skin.jpg', { type: 'image/jpeg' });
     Object.defineProperty(file, 'size', { value: 10 * 1024 * 1024 });
     const { valid } = validateImageFile(file);
@@ -72,6 +95,10 @@ describe('validateImageFile()', () => {
 // ─── validateImageDimensions ─────────────────────────────────────────────────
 
 describe('validateImageDimensions()', () => {
+  // Returns a mock Image object that fires onload or onerror asynchronously via
+  // setTimeout (matching real browser behaviour).  Setting src triggers the
+  // callback, which is how validateImageDimensions() detects load completion.
+  // shouldError=true simulates a corrupt/unreadable file.
   function mockImage(width, height, shouldError = false) {
     const img = {
       onload: null,

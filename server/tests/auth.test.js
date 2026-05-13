@@ -1,3 +1,18 @@
+/**
+ * Integration tests for /api/auth routes (register, login, logout, profile).
+ *
+ * Mocking strategy:
+ *  - db.query       → jest.fn() so each test controls exactly what rows the DB returns
+ *                     without touching a real database.  Chain .mockResolvedValueOnce()
+ *                     calls in the order the controller executes its queries.
+ *  - rateLimiter    → passthrough no-ops; rate limiting is not under test here.
+ *  - bcryptjs       → hash always returns a fixed string; compare is a jest.fn() whose
+ *                     return value is set per-test.  Avoids the real 300 ms bcrypt cost.
+ *
+ * jest.mock() calls are hoisted to the top of the file by Babel/Jest before any imports
+ * run, so the mocked versions are in place when `require('../src/app')` is evaluated.
+ */
+
 // Mocks are hoisted before all imports by Jest
 jest.mock('../src/models/db', () => ({ query: jest.fn() }));
 jest.mock('../src/middleware/rateLimiter', () => ({
@@ -20,6 +35,8 @@ const { clearBlacklist } = require('../src/models/tokenBlacklist');
 
 const SECRET = process.env.JWT_SECRET;
 
+// Creates a signed JWT for the test user; overrides let individual tests set
+// role, userId, or expiry without duplicating the sign() call everywhere.
 function makeToken(overrides = {}) {
   return jwt.sign(
     { userId: 1, username: 'alice', role: 'patient', ...overrides },
@@ -28,6 +45,8 @@ function makeToken(overrides = {}) {
   );
 }
 
+// The token blacklist is an in-memory Set.  Clear it before each test so a
+// token blacklisted by one test cannot affect the next.
 beforeEach(() => {
   clearBlacklist();
 });
@@ -36,6 +55,9 @@ beforeEach(() => {
 
 describe('POST /api/auth/register', () => {
   it('SUCCESS: registers a patient with all profile fields', async () => {
+    // The controller runs four sequential queries: duplicate check, users INSERT,
+    // patient_profiles INSERT, audit_logs INSERT.  Each mockResolvedValueOnce()
+    // corresponds to one query in that order.
     db.query
       .mockResolvedValueOnce({ rows: [] })  // duplicate check → none found
       .mockResolvedValueOnce({ rows: [{ user_id: 1, username: 'alice', role: 'patient' }] })
@@ -99,6 +121,9 @@ describe('POST /api/auth/register', () => {
     expect(res.body.user.role).toBe('patient');
   });
 
+  // Age validation tests (two-layer defence: HTML min/max on the client, plus server
+  // guard in the register controller).  These tests verify the server layer catches
+  // invalid values regardless of what the client sends.
   it('ERROR: returns 400 for a negative age', async () => {
     const res = await request(app)
       .post('/api/auth/register')
@@ -226,7 +251,8 @@ describe('POST /api/auth/login', () => {
   });
 
   it('EDGE: does not leak which field (username vs password) is wrong', async () => {
-    // Both "user not found" and "wrong password" return the same 401 message
+    // Security requirement: both "user not found" and "wrong password" must return
+    // the identical error message so an attacker cannot enumerate valid usernames.
     db.query.mockResolvedValueOnce({ rows: [] });
     const res1 = await request(app).post('/api/auth/login').send({ username: 'nobody', password: 'x' });
 
@@ -256,6 +282,8 @@ describe('POST /api/auth/logout', () => {
   });
 
   it('EDGE: blacklisted token is rejected on subsequent authenticated requests', async () => {
+    // Logout adds the token to the in-memory blacklist.  A second request with the
+    // same token must fail even though the JWT signature is still valid and not expired.
     const token = makeToken();
     db.query.mockResolvedValue({ rows: [] });
 

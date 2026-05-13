@@ -1,11 +1,20 @@
 """
-Shared fixtures for inference service tests.
+Shared fixtures for all inference service tests (pytest conftest).
 
-Environment variables MUST be set before server.py is imported, because
-model loading and asr_pipe initialisation happen at module level.
-  - MODEL_PATH  → nonexistent path  → model uses random weights (fine for API shape tests)
-  - ASR_MODEL_PATH → nonexistent dir → asr_pipe = None  → /transcribe returns 503
-  - HEATMAP_DIR → real temp dir     → Grad-CAM images can be written
+Why env vars must be set before importing server.py:
+  MobileNetV3 and the Whisper ASR pipeline are loaded at module level when
+  server.py is first imported.  Setting the env vars beforehand controls what
+  happens during that import:
+    MODEL_PATH     → nonexistent .pth file → model initialises with random weights.
+                     The API shape (output keys, HTTP codes) is fully exercised;
+                     the actual prediction values are meaningless but that's fine.
+    ASR_MODEL_PATH → nonexistent directory → asr_pipe is set to None, so every
+                     /transcribe request returns 503.  Tests verify this contract.
+    HEATMAP_DIR    → a real temporary directory → Grad-CAM PNGs can be written
+                     to disk and subsequently served by GET /heatmaps/{filename}.
+
+Fixture scope is "module" so the FastAPI TestClient and image/audio byte
+buffers are created once per test module, not once per test function.
 """
 
 import io

@@ -1,8 +1,28 @@
+/**
+ * Unit tests for the useVoiceRecorder React hook.
+ *
+ * The hook controls the mic lifecycle (getUserMedia → MediaRecorder → WAV
+ * conversion via AudioContext) and exposes isRecording, audioBlob, duration,
+ * and error.  Browser APIs absent in jsdom are shimmed in vitest.setup.js;
+ * here we only override behaviour for specific scenarios.
+ *
+ * Key patterns used across these tests:
+ *  - makeMockStream() returns a minimal MediaStream stub so getUserMedia never
+ *    touches real hardware and each test starts from a clean state.
+ *  - stopRecording() kicks off an async WAV-conversion pipeline internally.
+ *    `await new Promise(r => setTimeout(r, 0))` drains the microtask queue so
+ *    audioBlob is populated before assertions run.
+ *  - Duration timer tests scope vi.useFakeTimers() to only setInterval,
+ *    clearInterval, and Date — deliberately NOT faking setTimeout so React 19's
+ *    internal scheduler and Promise chains continue to work during rendering.
+ */
+
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 
-// Build a fresh mock stream/track for each test
+// Returns a minimal MediaStream-like object with one stoppable track.
+// Fresh instance per test so mock call counts don't bleed between tests.
 function makeMockStream() {
   const track = { stop: vi.fn() };
   return { getTracks: vi.fn(() => [track]) };
@@ -109,6 +129,9 @@ describe('stopRecording()', () => {
     await act(async () => { await result.current.startRecording(); });
     await act(async () => {
       result.current.stopRecording();
+      // The WAV conversion (decodeAudioData → OfflineAudioContext → Blob) runs
+      // as microtasks after stopRecording() returns.  setTimeout(r, 0) ensures
+      // the microtask queue is flushed before we assert on audioBlob.
       await new Promise((r) => setTimeout(r, 0));
     });
 
@@ -149,8 +172,10 @@ describe('clearRecording()', () => {
 });
 
 // ─── Duration timer ───────────────────────────────────────────────────────────
-// Only mock setInterval/clearInterval/Date — NOT setTimeout, so React's
-// internal scheduler and Promises continue to work during rendering.
+// Only mock setInterval/clearInterval/Date — NOT setTimeout.
+// React 19's internal scheduler and Promise microtasks rely on setTimeout;
+// faking it causes act() to deadlock while waiting for state updates that
+// can never run because their scheduler callbacks are suspended.
 
 describe('Duration timer', () => {
   beforeEach(() => {
@@ -200,6 +225,9 @@ describe('Duration timer', () => {
 
 describe('WAV conversion fallback', () => {
   it('falls back to raw blob when AudioContext.decodeAudioData rejects', async () => {
+    // Replace the global AudioContext with a version whose decodeAudioData always
+    // rejects.  The hook should catch this and fall back to using the raw
+    // compressed blob rather than leaving audioBlob as null.
     const OriginalAudioContext = global.AudioContext;
     global.AudioContext = class {
       decodeAudioData() { return Promise.reject(new Error('decode failed')); }

@@ -1,3 +1,16 @@
+/**
+ * Unit-level tests for Express middleware: authenticate, requireRole, and the
+ * two multer upload instances (imageUpload / audioUpload).
+ *
+ * Why a minimal test app instead of the real app?
+ *  - Isolates middleware behaviour from route-level logic.
+ *  - Avoids setting up a full DB-backed route tree just to test a header check.
+ *  - `buildTestApp(role)` creates a single /probe route guarded only by the
+ *    middleware under test; the route echoes req.user so we can assert on it.
+ *  - `buildUploadApp(multerMiddleware)` wraps one multer instance with a generic
+ *    error handler so MIME-rejection errors surface as 500 in tests.
+ */
+
 jest.mock('../src/models/db', () => ({ query: jest.fn() }));
 jest.mock('../src/middleware/rateLimiter', () => ({
   loginLimiter: (req, res, next) => next(),
@@ -12,7 +25,9 @@ const { clearBlacklist, addToBlacklist } = require('../src/models/tokenBlacklist
 
 const SECRET = process.env.JWT_SECRET;
 
-// Minimal test app with a probe route to inspect middleware behaviour
+// Creates a minimal Express app whose only route is GET /probe, guarded by
+// authenticate and optionally requireRole(role).  The handler echoes req.user
+// so callers can assert on the decoded token payload.
 function buildTestApp(role = null) {
   const app = express();
   app.use(express.json());
@@ -26,6 +41,7 @@ function buildTestApp(role = null) {
   return app;
 }
 
+// Clear the in-memory token blacklist between tests to prevent bleed-over.
 beforeEach(() => {
   clearBlacklist();
 });
@@ -156,9 +172,10 @@ describe('requireRole middleware', () => {
   });
 
   it('ERROR: returns 401 (not 403) when there is no token at all on a role-protected route', async () => {
+    // authenticate runs before requireRole in the middleware chain.  A missing token
+    // is an authentication failure (401), not an authorisation failure (403).
     const app = buildTestApp('clinician');
     const res = await request(app).get('/probe');
-    // authenticate runs first and returns 401 before requireRole is reached
     expect(res.status).toBe(401);
   });
 });
@@ -168,6 +185,9 @@ describe('requireRole middleware', () => {
 describe('Upload middleware MIME type filtering', () => {
   const { imageUpload, audioUpload } = require('../src/middleware/upload');
 
+  // Wraps a single multer instance in a minimal Express app with an error
+  // handler.  Multer calls cb(new Error(...)) on rejection; Express passes it
+  // to the error handler, which returns 500 — letting us assert on the message.
   function buildUploadApp(multerMiddleware) {
     const app = express();
     app.post('/upload', multerMiddleware.single('file'), (req, res) => {
@@ -227,6 +247,8 @@ describe('Upload middleware MIME type filtering', () => {
     });
 
     it('SUCCESS: accepts audio/webm;codecs=opus (Chrome codec suffix)', async () => {
+      // Chrome's MediaRecorder sends "audio/webm;codecs=opus" — the audioUpload
+      // filter must use startsWith('audio/') rather than an exact equality check.
       const res = await request(app)
         .post('/upload')
         .attach('file', Buffer.from('webm data'), { filename: 'rec.webm', contentType: 'audio/webm;codecs=opus' });

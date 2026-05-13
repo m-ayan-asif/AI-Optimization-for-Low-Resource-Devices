@@ -1,3 +1,21 @@
+/**
+ * Integration tests for /api/screening routes.
+ *
+ * Mocking strategy:
+ *  - db.query       → jest.fn() controls all database responses per-test.
+ *  - rateLimiter    → passthrough no-ops (not under test).
+ *  - Python inference service (localhost:5001) → NOT mocked deliberately.
+ *    Tests that would normally call the Python service instead rely on the
+ *    natural ECONNREFUSED to trigger the Express fallback path.  This validates
+ *    the graceful-degradation behaviour without needing a running Python server.
+ *
+ * Fixtures:
+ *  - MINIMAL_JPEG   → a real 1×1 pixel JPEG in base64; multer's MIME filter
+ *                     requires a legitimate content-type header AND buffer.
+ *  - silentWav      → a hand-crafted 44-byte WAV header with one silent sample;
+ *                     enough to satisfy the audio multer filter.
+ */
+
 jest.mock('../src/models/db', () => ({ query: jest.fn() }));
 jest.mock('../src/middleware/rateLimiter', () => ({
   loginLimiter: (req, res, next) => next(),
@@ -21,6 +39,8 @@ function makeToken(overrides = {}) {
 
 const PATIENT_TOKEN = makeToken();
 const CASE_ID = 'test-case-uuid-001';
+// A structurally valid 1×1 JPEG (base64-encoded).  Using a real JPEG byte sequence
+// ensures multer's file-type check passes — a random buffer would be rejected.
 const MINIMAL_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U' +
   'HRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgN' +
@@ -142,7 +162,8 @@ describe('POST /api/screening/:caseId/upload-image', () => {
 // ─── POST /api/screening/:caseId/voice ───────────────────────────────────────
 
 describe('POST /api/screening/:caseId/voice', () => {
-  // Minimal valid WAV: 44-byte header + 1 silent sample
+  // Hand-crafted RIFF/WAV buffer: 44-byte header + 1 silent 16-bit sample.
+  // Built inline so the test file has no external binary fixture dependency.
   const silentWav = (() => {
     const buf = Buffer.alloc(46);
     buf.write('RIFF', 0);           buf.writeUInt32LE(38, 4);
@@ -156,7 +177,9 @@ describe('POST /api/screening/:caseId/voice', () => {
   })();
 
   it('SUCCESS: saves transcript with graceful ASR fallback when Python is unreachable', async () => {
-    // callASRService will fail (ECONNREFUSED to localhost:5001), fallback activates
+    // The Python service is NOT mocked.  The request to localhost:5001 will receive
+    // ECONNREFUSED, which triggers the fallback path: transcript_text is saved as null
+    // and asr_available is false.  This validates the full graceful-degradation flow.
     db.query
       .mockResolvedValueOnce({ rows: [{ transcript_id: 7 }] })
       .mockResolvedValueOnce({ rows: [] }); // UPDATE screening_cases
@@ -204,7 +227,8 @@ describe('POST /api/screening/:caseId/voice', () => {
       .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
       .attach('audio', Buffer.from('fake png'), { filename: 'bad.png', contentType: 'image/png' });
 
-    expect(res.status).toBe(500); // multer rejects → error handler
+    // multer's fileFilter throws a MulterError; the Express error handler converts it to 500.
+    expect(res.status).toBe(500);
   });
 
   it('ERROR: returns 401 with no auth token', async () => {
@@ -234,7 +258,9 @@ describe('POST /api/screening/:caseId/voice', () => {
 
 describe('POST /api/screening/:caseId/inference', () => {
   it('SUCCESS: falls back to mock prediction when image file path does not exist on disk', async () => {
-    // DB returns a path that does not exist → callInferenceService throws → mock prediction used
+    // DB returns a valid row but the file_path points to a missing file on disk.
+    // callInferenceService will fail (fs.createReadStream throws), triggering the
+    // mock-prediction fallback.  model_version contains "mock" to signal this path.
     db.query
       .mockResolvedValueOnce({ rows: [{ file_path: '/nonexistent/test_image.jpg' }] })
       .mockResolvedValueOnce({ rows: [{ prediction_id: 55 }] })

@@ -1,9 +1,18 @@
 """
 Tests for POST /transcribe.
 
-Since ASR_MODEL_PATH points to a nonexistent directory in the test environment,
-asr_pipe is None and all /transcribe requests return 503.  These tests verify
-that contract thoroughly, plus validate input rejection (empty file).
+Test environment setup (see conftest.py):
+  ASR_MODEL_PATH is set to a nonexistent directory before server.py is imported,
+  so the Whisper pipeline (asr_pipe) is None at startup.  Every request to
+  /transcribe therefore returns 503 Service Unavailable.
+
+What these tests verify:
+  1. The 503 contract holds for all audio MIME types (WAV, WebM, MP4).
+  2. The JSON error body has an 'error' key mentioning the unavailable model.
+  3. Input validation: an empty file may return 400 or 503 depending on which
+     guard runs first — both status codes are acceptable.
+  4. Edge cases: a 255-character filename and a None filename are handled
+     without crashing (503 or FastAPI's own 422 validation error).
 """
 
 
