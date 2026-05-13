@@ -41,6 +41,10 @@
   "errors": {
     "usernameRequired": "Please enter your username.",
     "usernameTooShort": "Username must be at least 3 characters.",
+    "usernameNoLetters": "Username must contain at least one letter.",
+    "ageRequired": "Please enter your age.",
+    "genderRequired": "Please select your gender.",
+    "regionRequired": "Please select your region.",
     "passwordRequired": "Please enter your password.",
     "passwordTooShort": "Password must be at least 6 characters.",
     "passwordMismatch": "Passwords do not match.",

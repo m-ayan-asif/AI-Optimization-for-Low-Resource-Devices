@@ -45,9 +45,14 @@ function makeToken(overrides = {}) {
   );
 }
 
-// The token blacklist is an in-memory Set.  Clear it before each test so a
-// token blacklisted by one test cannot affect the next.
+// Reset db.query and bcrypt.compare before each test so unconsumed
+// mockResolvedValueOnce responses from a failing test cannot contaminate the
+// next test's mock queue.  bcrypt.hash uses a persistent mockResolvedValue
+// (not a Once queue), so it is re-applied after the reset.
 beforeEach(() => {
+  db.query.mockReset();
+  bcrypt.compare.mockReset();
+  bcrypt.hash.mockResolvedValue('$2b$12$mockedhash');
   clearBlacklist();
 });
 
@@ -91,16 +96,18 @@ describe('POST /api/auth/register', () => {
     expect(res.body).toHaveProperty('token');
   });
 
-  it('SUCCESS: registers a patient with minimal fields (no age/gender/region)', async () => {
+  it('SUCCESS: registers a clinician with minimal required fields only', async () => {
+    // Clinicians do not require age/gender/region, so only 4 queries run:
+    // duplicate check, users INSERT, clinician_profiles INSERT, audit_logs INSERT.
     db.query
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ user_id: 3, username: 'bob', role: 'patient' }] })
+      .mockResolvedValueOnce({ rows: [{ user_id: 3, username: 'dr_min', role: 'clinician' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'bob', email: 'bob@test.com', password: 'pass123' });
+      .send({ username: 'dr_min', email: 'dr_min@test.com', password: 'pass123', role: 'clinician' });
 
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('token');
@@ -115,7 +122,7 @@ describe('POST /api/auth/register', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'dave', email: 'dave@test.com', password: 'pass123' });
+      .send({ username: 'dave', email: 'dave@test.com', password: 'pass123', age: 30, gender: 'M', region: 'Lahore' });
 
     expect(res.status).toBe(201);
     expect(res.body.user.role).toBe('patient');
@@ -125,9 +132,10 @@ describe('POST /api/auth/register', () => {
   // guard in the register controller).  These tests verify the server layer catches
   // invalid values regardless of what the client sends.
   it('ERROR: returns 400 for a negative age', async () => {
+    // gender and region are provided so the controller reaches the age-value check
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: -5 });
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: -5, gender: 'F', region: 'Islamabad' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/age/i);
   });
@@ -135,7 +143,7 @@ describe('POST /api/auth/register', () => {
   it('ERROR: returns 400 for an age above 120', async () => {
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 999 });
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 999, gender: 'F', region: 'Islamabad' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/age/i);
   });
@@ -143,15 +151,17 @@ describe('POST /api/auth/register', () => {
   it('ERROR: returns 400 for a decimal age', async () => {
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 25.5 });
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 25.5, gender: 'F', region: 'Islamabad' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/age/i);
   });
 
   it('ERROR: returns 400 for age zero', async () => {
+    // age=0 passes the "required" guard (!age && age !== 0) because age !== 0 is false,
+    // but fails the value guard (ageNum < 1) — gender/region needed to reach that guard.
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 0 });
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 0, gender: 'F', region: 'Islamabad' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/age/i);
   });
@@ -166,7 +176,7 @@ describe('POST /api/auth/register', () => {
 
       const res = await request(app)
         .post('/api/auth/register')
-        .send({ username: `user${age}`, email: `user${age}@test.com`, password: 'pass123', age });
+        .send({ username: `user${age}`, email: `user${age}@test.com`, password: 'pass123', age, gender: 'F', region: 'Islamabad' });
       expect(res.status).toBe(201);
     }
   });
@@ -176,7 +186,7 @@ describe('POST /api/auth/register', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123' });
+      .send({ username: 'alice', email: 'alice@test.com', password: 'pass123', age: 25, gender: 'F', region: 'Islamabad' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already taken/i);
@@ -187,7 +197,7 @@ describe('POST /api/auth/register', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'charlie', email: 'charlie@test.com', password: 'pass123' });
+      .send({ username: 'charlie', email: 'charlie@test.com', password: 'pass123', age: 30, gender: 'M', region: 'Lahore' });
 
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/registration failed/i);

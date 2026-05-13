@@ -41,6 +41,10 @@
   "errors": {
     "usernameRequired": "براہ کرم اپنا صارف نام درج کریں۔",
     "usernameTooShort": "صارف نام کم از کم 3 حروف کا ہونا چاہیے۔",
+    "usernameNoLetters": "صارف نام میں کم از کم ایک حرف ہونا چاہیے۔",
+    "ageRequired": "براہ کرم اپنی عمر درج کریں۔",
+    "genderRequired": "براہ کرم اپنی جنس منتخب کریں۔",
+    "regionRequired": "براہ کرم اپنا علاقہ منتخب کریں۔",
     "passwordRequired": "براہ کرم اپنا پاسورڈ درج کریں۔",
     "passwordTooShort": "پاسورڈ کم از کم 6 حروف کا ہونا چاہیے۔",
     "passwordMismatch": "پاسورڈ مماثل نہیں ہیں۔",

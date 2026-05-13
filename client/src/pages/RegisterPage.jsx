@@ -28,12 +28,21 @@ export default function RegisterPage() {
     // Client-side validation
     if (!form.username.trim()) { setError(t('errors.usernameRequired')); return; }
     if (form.username.trim().length < 3) { setError(t('errors.usernameTooShort')); return; }
+    if (!/[a-zA-Z]/.test(form.username.trim())) { setError(t('errors.usernameNoLetters')); return; }
     if (!form.email.trim()) { setError(t('errors.emailRequired')); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { setError(t('errors.emailInvalid')); return; }
     if (!form.password) { setError(t('errors.passwordRequired')); return; }
     if (form.password.length < 6) { setError(t('errors.passwordTooShort')); return; }
     if (form.password !== form.confirmPassword) { setError(t('errors.passwordMismatch')); return; }
-    if (form.age !== '' && (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age)))) {
+    if (form.role === 'patient') {
+      if (!form.age) { setError(t('errors.ageRequired')); return; }
+      if (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age))) {
+        setError('Please enter a valid age (1–120).');
+        return;
+      }
+      if (!form.gender) { setError(t('errors.genderRequired')); return; }
+      if (!form.region) { setError(t('errors.regionRequired')); return; }
+    } else if (form.age !== '' && (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age)))) {
       setError('Please enter a valid age (1–120).');
       return;
     }
@@ -141,12 +150,12 @@ export default function RegisterPage() {
             {form.role === 'patient' && (
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className={labelClass}>{t('auth.age')}</label>
-                  <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" min="1" max="120" />
+                  <label className={labelClass}>{t('auth.age')} <span className="text-red-500">*</span></label>
+                  <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" min="1" max="120" required />
                 </div>
                 <div>
-                  <label className={labelClass}>{t('auth.gender')}</label>
-                  <select value={form.gender} onChange={(e) => updateForm('gender', e.target.value)} className={`${inputClass} bg-white`}>
+                  <label className={labelClass}>{t('auth.gender')} <span className="text-red-500">*</span></label>
+                  <select value={form.gender} onChange={(e) => updateForm('gender', e.target.value)} className={`${inputClass} bg-white`} required>
                     <option value="">—</option>
                     <option value="Male">{t('auth.male')}</option>
                     <option value="Female">{t('auth.female')}</option>
@@ -154,8 +163,8 @@ export default function RegisterPage() {
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>{t('auth.region')}</label>
-                  <select value={form.region} onChange={(e) => updateForm('region', e.target.value)} className={`${inputClass} bg-white`}>
+                  <label className={labelClass}>{t('auth.region')} <span className="text-red-500">*</span></label>
+                  <select value={form.region} onChange={(e) => updateForm('region', e.target.value)} className={`${inputClass} bg-white`} required>
                     <option value="">—</option>
                     {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>

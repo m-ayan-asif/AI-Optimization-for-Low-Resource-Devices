@@ -8,7 +8,25 @@ async function register(req, res) {
   try {
     const { username, email, password, role, age, gender, region } = req.body;
 
-    // Validate optional profile fields
+    // Validate username contains at least one letter
+    if (!username || !/[a-zA-Z]/.test(username)) {
+      return res.status(400).json({ error: 'Username must contain at least one letter.' });
+    }
+
+    // For patients, age, gender, and region are required
+    if ((role || 'patient') === 'patient') {
+      if (!age && age !== 0) {
+        return res.status(400).json({ error: 'Age is required for patient accounts.' });
+      }
+      if (!gender) {
+        return res.status(400).json({ error: 'Gender is required for patient accounts.' });
+      }
+      if (!region) {
+        return res.status(400).json({ error: 'Region is required for patient accounts.' });
+      }
+    }
+
+    // Validate age value
     if (age !== undefined && age !== null && age !== '') {
       const ageNum = Number(age);
       if (!Number.isInteger(ageNum) || ageNum < 1 || ageNum > 120) {
