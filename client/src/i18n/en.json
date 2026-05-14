@@ -50,6 +50,7 @@
     "passwordMismatch": "Passwords do not match.",
     "emailRequired": "Please enter your email address.",
     "emailInvalid": "Please enter a valid email address.",
+    "emailDomainInvalid": "The email domain does not exist. Please use a valid email address.",
     "invalidCredentials": "Incorrect username or password. Please try again.",
     "userExists": "This username or email is already registered.",
     "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",

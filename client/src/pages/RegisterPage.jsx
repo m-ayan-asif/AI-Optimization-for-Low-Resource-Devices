@@ -5,6 +5,54 @@ import { useAuth } from '../context/AuthContext';
 import { REGIONS } from '../utils/constants';
 import { Eye, EyeOff, ArrowRight, User, Stethoscope, AlertCircle } from 'lucide-react';
 
+const KNOWN_EMAIL_DOMAINS = [
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com',
+  'icloud.com', 'me.com', 'protonmail.com', 'ymail.com', 'msn.com',
+  'yahoo.co.uk', 'googlemail.com',
+];
+
+// Segments long enough to be meaningful for substring matching
+const KNOWN_BRANDS = KNOWN_EMAIL_DOMAINS
+  .map((d) => ({ brand: d.split('.')[0], domain: d }))
+  .filter(({ brand }) => brand.length >= 4);
+
+// Institutional/professional TLD patterns that should never be flagged
+const INSTITUTIONAL = ['.edu', '.ac.', '.gov', '.mil', '.org', '.net'];
+
+function levenshtein(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[a.length][b.length];
+}
+
+function suggestEmailDomain(email) {
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return null;
+  if (KNOWN_EMAIL_DOMAINS.includes(domain)) return null;
+  // Never flag institutional/professional domains
+  if (INSTITUTIONAL.some((p) => domain.includes(p))) return null;
+
+  // 1. Levenshtein — catches single-char swaps, missing dots, wrong TLDs
+  const byDistance = KNOWN_EMAIL_DOMAINS.reduce((best, known) => {
+    const dist = levenshtein(domain, known);
+    return dist < best.dist ? { domain: known, dist } : best;
+  }, { domain: null, dist: Infinity });
+  if (byDistance.dist <= 2) return byDistance.domain;
+
+  // 2. Brand substring — catches 123gmail.com, myyahoo.net, outlookmail.com, etc.
+  for (const { brand, domain: known } of KNOWN_BRANDS) {
+    if (domain.includes(brand)) return known;
+  }
+
+  return null;
+}
+
 export default function RegisterPage() {
   const { t } = useTranslation();
   const { register } = useAuth();
@@ -31,21 +79,21 @@ export default function RegisterPage() {
     if (!/[a-zA-Z]/.test(form.username.trim())) { setError(t('errors.usernameNoLetters')); return; }
     if (!form.email.trim()) { setError(t('errors.emailRequired')); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { setError(t('errors.emailInvalid')); return; }
+    const suggestion = suggestEmailDomain(form.email.trim());
+    if (suggestion) {
+      setError(`Did you mean ${form.email.trim().split('@')[0]}@${suggestion}?`);
+      return;
+    }
     if (!form.password) { setError(t('errors.passwordRequired')); return; }
     if (form.password.length < 6) { setError(t('errors.passwordTooShort')); return; }
     if (form.password !== form.confirmPassword) { setError(t('errors.passwordMismatch')); return; }
-    if (form.role === 'patient') {
-      if (!form.age) { setError(t('errors.ageRequired')); return; }
-      if (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age))) {
-        setError('Please enter a valid age (1–120).');
-        return;
-      }
-      if (!form.gender) { setError(t('errors.genderRequired')); return; }
-      if (!form.region) { setError(t('errors.regionRequired')); return; }
-    } else if (form.age !== '' && (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age)))) {
+    if (!form.age) { setError(t('errors.ageRequired')); return; }
+    if (Number(form.age) < 1 || Number(form.age) > 120 || !Number.isInteger(Number(form.age))) {
       setError('Please enter a valid age (1–120).');
       return;
     }
+    if (!form.gender) { setError(t('errors.genderRequired')); return; }
+    if (!form.region) { setError(t('errors.regionRequired')); return; }
 
     setLoading(true);
     try {
@@ -64,6 +112,8 @@ export default function RegisterPage() {
         setError(t('errors.tooManyAttempts'));
       } else if (!err.response) {
         setError(t('errors.networkError'));
+      } else if (status === 400 && serverMsg?.toLowerCase().includes('email domain')) {
+        setError(t('errors.emailDomainInvalid'));
       } else {
         setError(serverMsg || t('errors.registrationFailed'));
       }
@@ -147,30 +197,28 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {form.role === 'patient' && (
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className={labelClass}>{t('auth.age')} <span className="text-red-500">*</span></label>
-                  <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" min="1" max="120" required />
-                </div>
-                <div>
-                  <label className={labelClass}>{t('auth.gender')} <span className="text-red-500">*</span></label>
-                  <select value={form.gender} onChange={(e) => updateForm('gender', e.target.value)} className={`${inputClass} bg-white`} required>
-                    <option value="">—</option>
-                    <option value="Male">{t('auth.male')}</option>
-                    <option value="Female">{t('auth.female')}</option>
-                    <option value="Other">{t('auth.other')}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>{t('auth.region')} <span className="text-red-500">*</span></label>
-                  <select value={form.region} onChange={(e) => updateForm('region', e.target.value)} className={`${inputClass} bg-white`} required>
-                    <option value="">—</option>
-                    {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>{t('auth.age')} <span className="text-red-500">*</span></label>
+                <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" min="1" max="120" />
               </div>
-            )}
+              <div>
+                <label className={labelClass}>{t('auth.gender')} <span className="text-red-500">*</span></label>
+                <select value={form.gender} onChange={(e) => updateForm('gender', e.target.value)} className={`${inputClass} bg-white`}>
+                  <option value="">—</option>
+                  <option value="Male">{t('auth.male')}</option>
+                  <option value="Female">{t('auth.female')}</option>
+                  <option value="Other">{t('auth.other')}</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>{t('auth.region')} <span className="text-red-500">*</span></label>
+                <select value={form.region} onChange={(e) => updateForm('region', e.target.value)} className={`${inputClass} bg-white`}>
+                  <option value="">—</option>
+                  {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
 
             <button
               type="submit"
