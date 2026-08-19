@@ -45,7 +45,7 @@ async function getCaseDetail(req, res) {
               i.file_path AS image_file_path,
               p.top_condition, p.confidence_score, p.all_scores, p.heatmap_path,
               p.inference_time_ms, p.model_version,
-              vt.transcript_text, vt.language AS transcript_language,
+              vt.transcript_text, vt.language AS transcript_language, vt.audio_file_path AS transcript_audio_path,
               cf.decision, cf.corrected_diagnosis, cf.notes AS feedback_notes,
               cf.created_at AS feedback_at,
               cu.username AS reviewer_username

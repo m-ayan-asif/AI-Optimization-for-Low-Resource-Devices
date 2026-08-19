@@ -58,7 +58,7 @@ async function uploadImage(req, res) {
 async function submitVoice(req, res) {
   try {
     const { caseId } = req.params;
-    const { language } = req.body;
+    const { language, additionalText } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided' });
@@ -78,10 +78,18 @@ async function submitVoice(req, res) {
       };
     }
 
+    // Append patient's written note to the ASR transcript when both are provided
+    let finalTranscript = asr.transcript_text;
+    if (additionalText && additionalText.trim()) {
+      finalTranscript = finalTranscript
+        ? `${finalTranscript}\n\n[Written note: ${additionalText.trim()}]`
+        : additionalText.trim();
+    }
+
     const transcriptResult = await db.query(
       `INSERT INTO voice_transcripts (audio_file_path, transcript_text, language, confidence_score, duration_seconds)
        VALUES ($1, $2, $3, $4, $5) RETURNING transcript_id`,
-      [req.file.path, asr.transcript_text, asr.language, asr.confidence_score, null]
+      [req.file.path, finalTranscript, asr.language, asr.confidence_score, null]
     );
 
     const transcriptId = transcriptResult.rows[0].transcript_id;
@@ -100,7 +108,7 @@ async function submitVoice(req, res) {
 
     res.json({
       transcript_id: transcriptId,
-      transcript_text: asr.transcript_text,
+      transcript_text: finalTranscript,
       keywords: asr.keywords,
       confidence: asr.confidence_score,
       asr_available: asr.transcript_text !== null,
@@ -108,6 +116,44 @@ async function submitVoice(req, res) {
   } catch (err) {
     console.error('Voice submit error:', err);
     res.status(500).json({ error: 'Voice processing failed' });
+  }
+}
+
+async function submitTextInput(req, res) {
+  try {
+    const { caseId } = req.params;
+    const { text, language } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'No text provided' });
+    }
+
+    // Roman Urdu uses Latin script but is still Urdu — DB constraint allows only 'ur' | 'en'
+    const dbLanguage = language === 'en' ? 'en' : 'ur';
+
+    const transcriptResult = await db.query(
+      `INSERT INTO voice_transcripts (audio_file_path, transcript_text, language, confidence_score, duration_seconds)
+       VALUES ($1, $2, $3, $4, $5) RETURNING transcript_id`,
+      [null, text.trim(), dbLanguage, 1.0, null]
+    );
+
+    const transcriptId = transcriptResult.rows[0].transcript_id;
+
+    await db.query(
+      'UPDATE screening_cases SET transcript_id = $1 WHERE case_id = $2',
+      [transcriptId, caseId]
+    );
+
+    res.json({
+      transcript_id: transcriptId,
+      transcript_text: text.trim(),
+      keywords: [],
+      confidence: 1.0,
+      asr_available: false,
+    });
+  } catch (err) {
+    console.error('Text input error:', err);
+    res.status(500).json({ error: 'Text submission failed' });
   }
 }
 
@@ -293,4 +339,4 @@ async function getHistory(req, res) {
   }
 }
 
-module.exports = { createScreening, uploadImage, submitVoice, runInference, getResults, getHistory };
+module.exports = { createScreening, uploadImage, submitVoice, submitTextInput, runInference, getResults, getHistory };

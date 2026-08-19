@@ -77,16 +77,20 @@
     "dragDrop": "Drag and drop an image here, or click to browse",
     "requirements": "JPEG or PNG, minimum 300×300 pixels, clear lighting",
     "voiceTitle": "Describe Your Symptoms",
-    "voiceDesc": "Optional: Record a voice description of your symptoms in Urdu or English.",
+    "voiceDesc": "Optional: Record your symptoms by voice or type them below. You can use English, Urdu, or Roman Urdu.",
     "voiceRecord": "Start Recording",
     "voiceStop": "Stop Recording",
     "voiceSkip": "Skip this step",
-    "voiceLang": "Recording Language",
+    "voiceLang": "Language",
     "analyzing": "Analyzing your image...",
     "analyzingDesc": "Our AI is examining your skin image. This usually takes a few seconds.",
     "next": "Next",
     "back": "Back",
-    "submit": "Run Analysis"
+    "submit": "Run Analysis",
+    "textTitle": "Or describe in writing",
+    "textPlaceholder": "Describe your symptoms here — English, اردو, or Roman Urdu (e.g. \"mujhe khujli ho rahi hai\")",
+    "textLabel": "Written description",
+    "langRomanUrdu": "Roman Urdu"
   },
   "results": {
     "title": "Screening Results",

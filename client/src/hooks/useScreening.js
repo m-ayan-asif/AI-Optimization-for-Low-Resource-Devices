@@ -40,7 +40,7 @@ export function useScreening() {
     }
   }
 
-  async function submitVoice(id, audioBlob, language) {
+  async function submitVoice(id, audioBlob, language, additionalText = null) {
     setLoading(true);
     setError(null);
     try {
@@ -53,13 +53,34 @@ export function useScreening() {
           : '.webm';
         formData.append('audio', audioBlob, `recording${ext}`);
       }
-      formData.append('language', language);
+      // Roman Urdu is still Urdu for the server's language field
+      formData.append('language', language === 'en' ? 'en' : 'ur');
+      if (additionalText && additionalText.trim()) {
+        formData.append('additionalText', additionalText.trim());
+      }
       const res = await api.post(`/screening/${id}/voice`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return res.data;
     } catch (err) {
       setError(err.response?.data?.error || 'Voice processing failed');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitTextInput(id, text, language) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post(`/screening/${id}/text-input`, {
+        text,
+        language,
+      });
+      return res.data;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Text submission failed');
       throw err;
     } finally {
       setLoading(false);
@@ -124,6 +145,7 @@ export function useScreening() {
     createCase,
     uploadImage,
     submitVoice,
+    submitTextInput,
     runInference,
     getResults,
     getHistory,

@@ -5,7 +5,7 @@ import { useClinician } from '../../hooks/useClinician';
 import { getConfidenceLevel, getConfidenceColor } from '../../utils/imageValidation';
 import {
   ArrowLeft, Eye, EyeOff, User, FileText, Clock, CheckCircle2,
-  AlertTriangle, XCircle, PenLine, ShieldAlert, AlertCircle, Mic
+  AlertTriangle, XCircle, PenLine, ShieldAlert, AlertCircle, Mic, Type
 } from 'lucide-react';
 
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
@@ -148,7 +148,7 @@ export default function CaseReviewPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <InfoItem label={t('clinician.cases.username')} value={data.patient_username} />
           <InfoItem label={t('auth.age')} value={data.age || '—'} />
-          <InfoItem label={t('auth.gender')} value={data.gender ? t(`auth.${data.gender}`) : '—'} />
+          <InfoItem label={t('auth.gender')} value={data.gender ? t(`auth.${data.gender.toLowerCase()}`) : '—'} />
           <InfoItem label={t('auth.region')} value={data.region || '—'} />
         </div>
         <div className="flex items-center gap-1.5 text-xs text-gray-300 mt-4 pt-4 border-t border-gray-50">
@@ -255,13 +255,15 @@ export default function CaseReviewPage() {
         </div>
       )}
 
-      {/* Voice recording / transcript */}
+      {/* Voice / text transcript */}
       {data.transcript_id && (
         <div className="bg-white rounded-2xl border border-gray-100 p-7">
           <div className="flex items-center justify-between mb-5">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Mic size={18} className="text-purple-500" />
-              Patient Voice Description
+              {data.transcript_audio_path
+                ? <Mic size={18} className="text-purple-500" />
+                : <Type size={18} className="text-purple-500" />}
+              {data.transcript_audio_path ? 'Patient Voice Description' : 'Patient Written Description'}
             </h3>
             <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
               {data.transcript_language === 'ur' ? 'Urdu' : 'English'}

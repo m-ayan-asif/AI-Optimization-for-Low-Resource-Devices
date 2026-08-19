@@ -4,14 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { validateImageFile, validateImageDimensions } from '../utils/imageValidation';
-import { Upload, Mic, MicOff, SkipForward, ArrowLeft, ArrowRight, Loader2, AlertCircle, Check, ImagePlus, X } from 'lucide-react';
+import { Mic, MicOff, SkipForward, ArrowLeft, ArrowRight, Loader2, AlertCircle, Check, ImagePlus, X, Type } from 'lucide-react';
 
 const STEPS = ['upload', 'voice', 'analysis'];
 
 export default function ScreeningPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { createCase, uploadImage, submitVoice, runInference, loading, error, setError } = useScreening();
+  const { createCase, uploadImage, submitVoice, submitTextInput, runInference, loading, error, setError } = useScreening();
   const { isRecording, audioBlob, duration, startRecording, stopRecording, clearRecording, error: micError } = useVoiceRecorder();
 
   const [step, setStep] = useState(0);
@@ -19,6 +19,7 @@ export default function ScreeningPage() {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageErrors, setImageErrors] = useState([]);
   const [voiceLang, setVoiceLang] = useState('en');
+  const [textInput, setTextInput] = useState('');
   const [caseId, setCaseId] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -52,8 +53,13 @@ export default function ScreeningPage() {
 
   async function goToAnalysis(skipVoice = false) {
     try {
-      if (!skipVoice && audioBlob) {
-        await submitVoice(caseId, audioBlob, voiceLang);
+      const hasText = textInput.trim().length > 0;
+      if (!skipVoice) {
+        if (audioBlob) {
+          await submitVoice(caseId, audioBlob, voiceLang, hasText ? textInput : null);
+        } else if (hasText) {
+          await submitTextInput(caseId, textInput, voiceLang);
+        }
       }
       setStep(2);
       await runInference(caseId);
@@ -157,7 +163,7 @@ export default function ScreeningPage() {
         </div>
       )}
 
-      {/* Step 2: Voice Symptoms */}
+      {/* Step 2: Voice + Text Symptoms */}
       {step === 1 && (
         <div className="bg-white rounded-2xl border border-purple-100 p-8 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900 mb-1">{t('screening.voiceTitle')}</h2>
@@ -166,8 +172,12 @@ export default function ScreeningPage() {
           {/* Language selector */}
           <div className="mb-8">
             <label className="block text-sm font-medium text-gray-600 mb-2">{t('screening.voiceLang')}</label>
-            <div className="flex gap-3">
-              {[{ code: 'en', label: 'English' }, { code: 'ur', label: 'اردو' }].map((lang) => (
+            <div className="flex gap-3 flex-wrap">
+              {[
+                { code: 'en', label: 'English' },
+                { code: 'ur', label: 'اردو' },
+                { code: 'ro', label: t('screening.langRomanUrdu') },
+              ].map((lang) => (
                 <button
                   key={lang.code}
                   onClick={() => setVoiceLang(lang.code)}
@@ -183,8 +193,8 @@ export default function ScreeningPage() {
             </div>
           </div>
 
-          {/* Recording controls */}
-          <div className="flex flex-col items-center gap-5 py-10">
+          {/* Voice recording controls */}
+          <div className="flex flex-col items-center gap-5 py-8">
             <div className="relative">
               <button
                 onClick={isRecording ? stopRecording : startRecording}
@@ -208,6 +218,22 @@ export default function ScreeningPage() {
             {micError && <div className="text-sm text-red-500">{micError}</div>}
           </div>
 
+          {/* Text input */}
+          <div className="border-t border-gray-100 pt-6 mt-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-3">
+              <Type size={15} className="text-purple-400" />
+              {t('screening.textTitle')}
+            </label>
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder={t('screening.textPlaceholder')}
+              rows={4}
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-none transition-all"
+              dir="auto"
+            />
+          </div>
+
           <div className="flex justify-between mt-6 pt-6 border-t border-gray-100">
             <button
               onClick={() => setStep(0)}
@@ -225,7 +251,7 @@ export default function ScreeningPage() {
               </button>
               <button
                 onClick={() => goToAnalysis(false)}
-                disabled={!audioBlob || loading}
+                disabled={(!audioBlob && !textInput.trim()) || loading}
                 className="flex items-center gap-2 px-7 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 disabled:opacity-40 transition-all cursor-pointer text-sm font-semibold border-none shadow-md shadow-purple-200"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null}
