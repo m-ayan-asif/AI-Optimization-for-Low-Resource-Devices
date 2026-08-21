@@ -9,6 +9,7 @@ import os
 import time
 import uuid
 import tempfile
+import traceback
 from pathlib import Path
 
 import torch
@@ -22,6 +23,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 import cv2
+import soundfile as sf
 from transformers import pipeline as hf_pipeline
 
 # ── Config ────────────────────────────────────────────────────────────
@@ -43,10 +45,11 @@ CLASS_NAMES = [
 
 NUM_CLASSES = len(CLASS_NAMES)
 IMG_SIZE = 224
+LOW_CONFIDENCE_THRESHOLD = 0.30
 
-# ── Model Definition (must match training exactly) ────────────────────
+# ── Model Definition ──────────────────────────────────────────────────
 def build_student_large(num_classes=7):
-    model = models.mobilenet_v3_large(weights=None)  # No pretrained — we load our own
+    model = models.mobilenet_v3_large(weights=None)
     in_features = model.classifier[0].in_features
     model.classifier = nn.Sequential(
         nn.Linear(in_features, 512),
@@ -57,7 +60,7 @@ def build_student_large(num_classes=7):
     return model
 
 
-# ── Preprocessing (must match val_transform from training) ────────────
+# ── Preprocessing ─────────────────────────────────────────────────────
 inference_transform = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
     transforms.ToTensor(),
@@ -65,16 +68,43 @@ inference_transform = transforms.Compose([
 ])
 
 
+# ── Skin Presence Validation ──────────────────────────────────────────
+def is_skin_image(pil_image: Image.Image, min_skin_ratio: float = 0.15) -> bool:
+    """
+    Validates whether an image contains adequate skin tones across Fitzpatrick scales
+    using joint HSV and YCrCb color space thresholding.
+    """
+    img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+    # HSV skin mask
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    lower_hsv = np.array([0, 15, 0], dtype=np.uint8)
+    upper_hsv = np.array([25, 255, 255], dtype=np.uint8)
+    mask_hsv = cv2.inRange(hsv, lower_hsv, upper_hsv)
+
+    # YCrCb skin mask (effective across South Asian Fitzpatrick scales IV-VI)
+    ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+    lower_ycrcb = np.array([0, 133, 77], dtype=np.uint8)
+    upper_ycrcb = np.array([255, 173, 127], dtype=np.uint8)
+    mask_ycrcb = cv2.inRange(ycrcb, lower_ycrcb, upper_ycrcb)
+
+    # Combined mask
+    combined_mask = cv2.bitwise_and(mask_hsv, mask_ycrcb)
+    skin_pixels = np.count_nonzero(combined_mask)
+    total_pixels = img.shape[0] * img.shape[1]
+
+    if total_pixels == 0:
+        return False
+
+    return (skin_pixels / total_pixels) >= min_skin_ratio
+
+
 # ── Grad-CAM Implementation ──────────────────────────────────────────
 class GradCAM:
-    """Grad-CAM for MobileNetV3 — targets the last conv layer in features."""
-
     def __init__(self, model):
         self.model = model
         self.gradients = None
         self.activations = None
-        # Hook into the last conv block of MobileNetV3
-        # features[-1] is the last InvertedResidual block
         target_layer = model.features[-1]
         target_layer.register_forward_hook(self._forward_hook)
         target_layer.register_full_backward_hook(self._backward_hook)
@@ -98,17 +128,13 @@ class GradCAM:
         target = output[0, class_idx]
         target.backward()
 
-        gradients = self.gradients[0]  # (C, H, W)
-        activations = self.activations[0]  # (C, H, W)
+        gradients = self.gradients[0]
+        activations = self.activations[0]
 
-        # Global average pool gradients
-        weights = gradients.mean(dim=(1, 2))  # (C,)
-
-        # Weighted combination of activation maps
-        cam = (weights[:, None, None] * activations).sum(dim=0)  # (H, W)
+        weights = gradients.mean(dim=(1, 2))
+        cam = (weights[:, None, None] * activations).sum(dim=0)
         cam = torchF.relu(cam)
 
-        # Normalize to [0, 1]
         if cam.max() > 0:
             cam = cam / cam.max()
 
@@ -116,21 +142,17 @@ class GradCAM:
 
 
 def create_heatmap_overlay(original_image, cam, alpha=0.4):
-    """Overlay Grad-CAM heatmap on original image."""
-    # Resize CAM to match original image
     img_np = np.array(original_image.resize((IMG_SIZE, IMG_SIZE)))
     cam_resized = cv2.resize(cam, (IMG_SIZE, IMG_SIZE))
 
-    # Convert CAM to colormap
     heatmap = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
 
-    # Blend
     overlay = np.uint8(alpha * heatmap + (1 - alpha) * img_np)
     return overlay
 
 
-# ── Load Model ────────────────────────────────────────────────────────
+# ── Load Models ───────────────────────────────────────────────────────
 print(f"Loading model from {MODEL_PATH} on {DEVICE}...")
 model = build_student_large(NUM_CLASSES)
 
@@ -145,11 +167,8 @@ model = model.to(DEVICE)
 model.eval()
 
 grad_cam = GradCAM(model)
-
-# Ensure heatmap directory exists
 os.makedirs(HEATMAP_DIR, exist_ok=True)
 
-# ── Load ASR Model ────────────────────────────────────────────────────
 asr_pipe = None
 if os.path.isdir(ASR_MODEL_PATH):
     print(f"Loading ASR model from {ASR_MODEL_PATH} ...")
@@ -189,12 +208,21 @@ def health():
 async def predict(image: UploadFile = File(...)):
     start_time = time.time()
 
-    # Read and validate image
     contents = await image.read()
     try:
         pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception:
         return JSONResponse(status_code=400, content={"error": "Invalid image file"})
+
+    # Validate that the image contains skin
+    if not is_skin_image(pil_image):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "No skin detected. Please upload a clear photo of the affected skin area.",
+                "code": "NO_SKIN_DETECTED"
+            }
+        )
 
     # Preprocess
     input_tensor = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
@@ -204,20 +232,18 @@ async def predict(image: UploadFile = File(...)):
         logits = model(input_tensor)
         probabilities = torchF.softmax(logits, dim=1)[0]
 
-    # Get all scores
     all_scores = {}
     for i, name in enumerate(CLASS_NAMES):
         all_scores[name] = round(probabilities[i].item(), 4)
 
     top_idx = probabilities.argmax().item()
     top_condition = CLASS_NAMES[top_idx]
-    confidence_score = probabilities[top_idx].item()
+    confidence_score = float(probabilities[top_idx].item())
 
     # Generate Grad-CAM heatmap
     input_for_cam = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
     cam, _ = grad_cam.generate(input_for_cam, class_idx=top_idx)
 
-    # Save heatmap overlay
     heatmap_id = str(uuid.uuid4())
     overlay = create_heatmap_overlay(pil_image, cam)
     heatmap_filename = f"{heatmap_id}.png"
@@ -226,26 +252,33 @@ async def predict(image: UploadFile = File(...)):
 
     inference_time_ms = int((time.time() - start_time) * 1000)
 
+    # Low confidence / Clear skin threshold (<= 30%)
+    if confidence_score <= LOW_CONFIDENCE_THRESHOLD:
+        return {
+            "model_version": "mobilenetv3-large-distilled-v1",
+            "top_condition": "No Disease / Inconclusive",
+            "confidence_score": round(confidence_score, 4),
+            "status": "out_of_scope",
+            "all_scores": all_scores,
+            "heatmap_path": heatmap_filename,
+            "inference_time_ms": inference_time_ms,
+        }
+
     return {
         "model_version": "mobilenetv3-large-distilled-v1",
         "top_condition": top_condition,
         "confidence_score": round(confidence_score, 4),
+        "status": "classified",
         "all_scores": all_scores,
         "heatmap_path": heatmap_filename,
         "inference_time_ms": inference_time_ms,
     }
 
 
-import traceback
-import soundfile as sf
-
-
 def load_audio_wav(file_path: str, target_sr: int = 16000) -> np.ndarray:
-    """Read a WAV file with soundfile (no external dependencies)."""
     data, sr = sf.read(file_path, dtype="float32", always_2d=True)
-    audio = data.mean(axis=1)  # mix to mono
+    audio = data.mean(axis=1)
     if sr != target_sr:
-        # Resample only if the browser sent something other than 16 kHz
         import librosa
         audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
     return audio.astype(np.float32)
@@ -254,7 +287,6 @@ def load_audio_wav(file_path: str, target_sr: int = 16000) -> np.ndarray:
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
     if asr_pipe is None:
-        print("[transcribe] ERROR: ASR model is not loaded.")
         return JSONResponse(
             status_code=503,
             content={"error": "ASR model not loaded. Run inference/download_asr_model.py first."},
@@ -262,30 +294,21 @@ async def transcribe(audio: UploadFile = File(...)):
 
     contents = await audio.read()
     if not contents:
-        print("[transcribe] ERROR: received empty audio file.")
         return JSONResponse(status_code=400, content={"error": "Empty audio file received."})
 
     suffix = Path(audio.filename).suffix if audio.filename else ".wav"
-    print(f"[transcribe] Received {len(contents)} bytes, filename='{audio.filename}', suffix='{suffix}'")
-
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(contents)
         tmp_path = tmp.name
 
     try:
-        print(f"[transcribe] Loading audio from {tmp_path} ...")
         audio_array = load_audio_wav(tmp_path)
-        print(f"[transcribe] Audio loaded: {len(audio_array)} samples at 16 kHz ({len(audio_array)/16000:.1f}s)")
-
-        print("[transcribe] Running Whisper ASR ...")
         result = asr_pipe(
             {"array": audio_array, "sampling_rate": 16000},
             generate_kwargs={"language": "urdu", "task": "transcribe"},
         )
 
         transcript_text = result["text"].strip()
-        print(f"[transcribe] Transcript: '{transcript_text}'")
-
         tokens = transcript_text.split()
         keywords = list(dict.fromkeys(t for t in tokens if len(t) > 3))[:10]
 
@@ -296,7 +319,6 @@ async def transcribe(audio: UploadFile = File(...)):
             "keywords": keywords,
         }
     except Exception as e:
-        print(f"[transcribe] EXCEPTION: {e}")
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
     finally:

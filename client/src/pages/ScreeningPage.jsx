@@ -4,15 +4,43 @@ import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { validateImageFile, validateImageDimensions } from '../utils/imageValidation';
-import { Mic, MicOff, SkipForward, ArrowLeft, ArrowRight, Loader2, AlertCircle, Check, ImagePlus, X, Type } from 'lucide-react';
+import {
+  Mic,
+  MicOff,
+  SkipForward,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  AlertCircle,
+  Check,
+  ImagePlus,
+  X,
+  Type,
+} from 'lucide-react';
 
 const STEPS = ['upload', 'voice', 'analysis'];
 
 export default function ScreeningPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { createCase, uploadImage, submitVoice, submitTextInput, runInference, loading, error, setError } = useScreening();
-  const { isRecording, audioBlob, duration, startRecording, stopRecording, clearRecording, error: micError } = useVoiceRecorder();
+  const {
+    createCase,
+    uploadImage,
+    submitVoice,
+    submitTextInput,
+    runInference,
+    loading,
+    error,
+    setError,
+  } = useScreening();
+  const {
+    isRecording,
+    audioBlob,
+    duration,
+    startRecording,
+    stopRecording,
+    error: micError,
+  } = useVoiceRecorder();
 
   const [step, setStep] = useState(0);
   const [imageFile, setImageFile] = useState(null);
@@ -23,15 +51,25 @@ export default function ScreeningPage() {
   const [caseId, setCaseId] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleImageSelect = useCallback(async (file) => {
-    setImageErrors([]);
-    const fileCheck = validateImageFile(file);
-    if (!fileCheck.valid) { setImageErrors(fileCheck.errors); return; }
-    const dimCheck = await validateImageDimensions(file);
-    if (!dimCheck.valid) { setImageErrors(dimCheck.errors); return; }
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
-  }, []);
+  const handleImageSelect = useCallback(
+    async (file) => {
+      setImageErrors([]);
+      setError(null);
+      const fileCheck = validateImageFile(file);
+      if (!fileCheck.valid) {
+        setImageErrors(fileCheck.errors);
+        return;
+      }
+      const dimCheck = await validateImageDimensions(file);
+      if (!dimCheck.valid) {
+        setImageErrors(dimCheck.errors);
+        return;
+      }
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    },
+    [setError]
+  );
 
   function handleDrop(e) {
     e.preventDefault();
@@ -47,7 +85,7 @@ export default function ScreeningPage() {
       await uploadImage(id, imageFile);
       setStep(1);
     } catch (err) {
-      // error is already set in the hook; no-op here keeps TS happy
+      // Handled in useScreening hook
     }
   }
 
@@ -65,7 +103,7 @@ export default function ScreeningPage() {
       await runInference(caseId);
       navigate(`/results/${caseId}`);
     } catch (err) {
-      setStep(1); // bounce back so the user sees the error banner
+      setStep(0); // Bounce back to step 0 if image fails skin validation
     }
   }
 
@@ -75,26 +113,37 @@ export default function ScreeningPage() {
       <div className="flex items-center gap-3 mb-8">
         {STEPS.map((s, i) => (
           <div key={s} className="flex items-center gap-3 flex-1">
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
-              i < step ? 'bg-purple-600 text-white shadow-md shadow-purple-200' :
-              i === step ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-4 ring-purple-100' :
-              'bg-gray-100 text-gray-400'
-            }`}>
+            <div
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+                i < step
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-200'
+                  : i === step
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-4 ring-purple-100'
+                    : 'bg-gray-100 text-gray-400'
+              }`}
+            >
               {i < step ? <Check size={16} /> : i + 1}
             </div>
-            <span className={`text-sm hidden sm:inline font-medium ${
-              i <= step ? 'text-purple-700' : 'text-gray-300'
-            }`}>
+            <span
+              className={`text-sm hidden sm:inline font-medium ${
+                i <= step ? 'text-purple-700' : 'text-gray-300'
+              }`}
+            >
               {t(`screening.step${i + 1}`)}
             </span>
-            {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 rounded ${i < step ? 'bg-purple-400' : 'bg-gray-100'}`} />}
+            {i < STEPS.length - 1 && (
+              <div
+                className={`flex-1 h-0.5 rounded ${i < step ? 'bg-purple-400' : 'bg-gray-100'}`}
+              />
+            )}
           </div>
         ))}
       </div>
 
       {error && (
         <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-5 flex items-center gap-2 border border-red-100">
-          <AlertCircle size={16} /> {error}
+          <AlertCircle size={16} />
+          {error.includes('No skin detected') ? t('screening.noSkinError') : error}
         </div>
       )}
 
@@ -122,7 +171,11 @@ export default function ScreeningPage() {
               <div className="relative rounded-2xl overflow-hidden bg-gray-50 border border-gray-100">
                 <img src={imagePreview} alt="Preview" className="w-full max-h-80 object-contain" />
                 <button
-                  onClick={() => { setImageFile(null); setImagePreview(null); setImageErrors([]); }}
+                  onClick={() => {
+                    setImageFile(null);
+                    setImagePreview(null);
+                    setImageErrors([]);
+                  }}
                   className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer border border-gray-200 hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition-all text-gray-500"
                 >
                   <X size={16} />
@@ -130,7 +183,9 @@ export default function ScreeningPage() {
               </div>
               <div className="flex items-center gap-2 text-sm text-green-600">
                 <Check size={16} />
-                <span className="font-medium">Image ready — {imageFile.name}</span>
+                <span className="font-medium">
+                  {t('screening.imageReady', { name: imageFile.name })}
+                </span>
               </div>
             </div>
           )}
@@ -146,7 +201,9 @@ export default function ScreeningPage() {
 
           {imageErrors.length > 0 && (
             <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mt-4 border border-red-100">
-              {imageErrors.map((err, i) => <div key={i}>{err}</div>)}
+              {imageErrors.map((err, i) => (
+                <div key={i}>{err}</div>
+              ))}
             </div>
           )}
 
@@ -169,9 +226,10 @@ export default function ScreeningPage() {
           <h2 className="text-xl font-semibold text-gray-900 mb-1">{t('screening.voiceTitle')}</h2>
           <p className="text-gray-400 text-sm mb-6">{t('screening.voiceDesc')}</p>
 
-          {/* Language selector */}
           <div className="mb-8">
-            <label className="block text-sm font-medium text-gray-600 mb-2">{t('screening.voiceLang')}</label>
+            <label className="block text-sm font-medium text-gray-600 mb-2">
+              {t('screening.voiceLang')}
+            </label>
             <div className="flex gap-3 flex-wrap">
               {[
                 { code: 'en', label: 'English' },
@@ -193,7 +251,6 @@ export default function ScreeningPage() {
             </div>
           </div>
 
-          {/* Voice recording controls */}
           <div className="flex flex-col items-center gap-5 py-8">
             <div className="relative">
               <button
@@ -204,11 +261,17 @@ export default function ScreeningPage() {
                     : 'bg-gradient-to-br from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800 shadow-lg shadow-purple-200'
                 }`}
               >
-                {isRecording ? <MicOff size={32} className="text-white" /> : <Mic size={32} className="text-white" />}
+                {isRecording ? (
+                  <MicOff size={32} className="text-white" />
+                ) : (
+                  <Mic size={32} className="text-white" />
+                )}
               </button>
             </div>
             <p className="text-sm text-gray-500 font-medium">
-              {isRecording ? `${t('screening.voiceStop')} — ${duration}s / 30s` : t('screening.voiceRecord')}
+              {isRecording
+                ? `${t('screening.voiceStop')} — ${duration}s / 30s`
+                : t('screening.voiceRecord')}
             </p>
             {audioBlob && !isRecording && (
               <div className="flex items-center gap-2 text-sm text-green-600 font-medium bg-green-50 px-4 py-2 rounded-full">
@@ -218,7 +281,6 @@ export default function ScreeningPage() {
             {micError && <div className="text-sm text-red-500">{micError}</div>}
           </div>
 
-          {/* Text input */}
           <div className="border-t border-gray-100 pt-6 mt-2">
             <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-3">
               <Type size={15} className="text-purple-400" />

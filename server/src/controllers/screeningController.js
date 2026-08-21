@@ -2,7 +2,6 @@ const db = require('../models/db');
 const fs = require('fs');
 const path = require('path');
 
-// Inference service URL — Python FastAPI running on port 5001
 const INFERENCE_URL = process.env.INFERENCE_URL || 'http://localhost:5001';
 
 async function createScreening(req, res) {
@@ -35,18 +34,16 @@ async function uploadImage(req, res) {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Store image metadata
     const imageResult = await db.query(
       `INSERT INTO images (file_path, file_size, format, width, height)
        VALUES ($1, $2, $3, $4, $5) RETURNING image_id`,
       [file.path, file.size, file.mimetype === 'image/png' ? 'PNG' : 'JPEG', null, null]
     );
 
-    // Link image to screening case
-    await db.query(
-      'UPDATE screening_cases SET image_id = $1 WHERE case_id = $2',
-      [imageResult.rows[0].image_id, caseId]
-    );
+    await db.query('UPDATE screening_cases SET image_id = $1 WHERE case_id = $2', [
+      imageResult.rows[0].image_id,
+      caseId,
+    ]);
 
     res.json({ image_id: imageResult.rows[0].image_id, message: 'Image uploaded' });
   } catch (err) {
@@ -64,7 +61,6 @@ async function submitVoice(req, res) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    // Attempt ASR — fall back gracefully if the model isn't loaded yet
     let asr;
     try {
       asr = await callASRService(req.file.path);
@@ -78,7 +74,6 @@ async function submitVoice(req, res) {
       };
     }
 
-    // Append patient's written note to the ASR transcript when both are provided
     let finalTranscript = asr.transcript_text;
     if (additionalText && additionalText.trim()) {
       finalTranscript = finalTranscript
@@ -101,10 +96,10 @@ async function submitVoice(req, res) {
       );
     }
 
-    await db.query(
-      'UPDATE screening_cases SET transcript_id = $1 WHERE case_id = $2',
-      [transcriptId, caseId]
-    );
+    await db.query('UPDATE screening_cases SET transcript_id = $1 WHERE case_id = $2', [
+      transcriptId,
+      caseId,
+    ]);
 
     res.json({
       transcript_id: transcriptId,
@@ -128,7 +123,6 @@ async function submitTextInput(req, res) {
       return res.status(400).json({ error: 'No text provided' });
     }
 
-    // Roman Urdu uses Latin script but is still Urdu — DB constraint allows only 'ur' | 'en'
     const dbLanguage = language === 'en' ? 'en' : 'ur';
 
     const transcriptResult = await db.query(
@@ -139,10 +133,10 @@ async function submitTextInput(req, res) {
 
     const transcriptId = transcriptResult.rows[0].transcript_id;
 
-    await db.query(
-      'UPDATE screening_cases SET transcript_id = $1 WHERE case_id = $2',
-      [transcriptId, caseId]
-    );
+    await db.query('UPDATE screening_cases SET transcript_id = $1 WHERE case_id = $2', [
+      transcriptId,
+      caseId,
+    ]);
 
     res.json({
       transcript_id: transcriptId,
@@ -183,7 +177,6 @@ async function callASRService(audioPath) {
   }
 
   const data = await response.json();
-  console.log('[callASRService] Transcript received:', data.transcript_text?.slice(0, 80));
   return data;
 }
 
@@ -191,7 +184,6 @@ async function runInference(req, res) {
   try {
     const { caseId } = req.params;
 
-    // Get the image file path for this case
     const caseResult = await db.query(
       `SELECT i.file_path FROM screening_cases sc
        JOIN images i ON sc.image_id = i.image_id
@@ -205,13 +197,16 @@ async function runInference(req, res) {
 
     const imagePath = caseResult.rows[0].file_path;
 
-    // Call Python inference service
     let prediction;
     try {
       prediction = await callInferenceService(imagePath);
     } catch (inferenceErr) {
+      // Forward client-side validation errors from FastAPI (like non-skin rejections)
+      if (inferenceErr.status === 400) {
+        return res.status(400).json({ error: inferenceErr.message });
+      }
+
       console.error('Inference service error:', inferenceErr.message);
-      // Fallback to mock if inference service is down
       const { generateMockPrediction } = require('../utils/mockData');
       console.warn('Falling back to mock prediction');
       prediction = generateMockPrediction();
@@ -253,7 +248,7 @@ async function callInferenceService(imagePath) {
   }
 
   const FormData = require('form-data');
-  const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+  const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
   const formData = new FormData();
   formData.append('image', fs.createReadStream(absolutePath));
@@ -266,7 +261,14 @@ async function callInferenceService(imagePath) {
 
   if (!response.ok) {
     const errBody = await response.text();
-    throw new Error(`Inference service returned ${response.status}: ${errBody}`);
+    let parsedMessage = errBody;
+    try {
+      const jsonErr = JSON.parse(errBody);
+      parsedMessage = jsonErr.error || jsonErr.detail || errBody;
+    } catch (_) {}
+    const err = new Error(parsedMessage);
+    err.status = response.status;
+    throw err;
   }
 
   return await response.json();
@@ -294,7 +296,6 @@ async function getResults(req, res) {
       return res.status(404).json({ error: 'Screening case not found' });
     }
 
-    // Also get extracted symptoms if voice was used
     const row = caseResult.rows[0];
     let symptoms = [];
     if (row.transcript_id) {
@@ -305,7 +306,6 @@ async function getResults(req, res) {
       symptoms = symResult.rows;
     }
 
-    // Build heatmap URL if available
     let heatmap_url = null;
     if (row.heatmap_path) {
       heatmap_url = `${INFERENCE_URL}/heatmaps/${row.heatmap_path}`;
@@ -339,4 +339,12 @@ async function getHistory(req, res) {
   }
 }
 
-module.exports = { createScreening, uploadImage, submitVoice, submitTextInput, runInference, getResults, getHistory };
+module.exports = {
+  createScreening,
+  uploadImage,
+  submitVoice,
+  submitTextInput,
+  runInference,
+  getResults,
+  getHistory,
+};

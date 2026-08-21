@@ -6,6 +6,11 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
 export function validateImageFile(file) {
   const errors = [];
 
+  if (!file) {
+    errors.push('No file selected.');
+    return { valid: false, errors };
+  }
+
   if (!ALLOWED_TYPES.includes(file.type)) {
     errors.push('Only JPEG and PNG images are accepted.');
   }
@@ -26,7 +31,9 @@ export function validateImageDimensions(file) {
       URL.revokeObjectURL(url);
       const errors = [];
       if (img.width < MIN_WIDTH || img.height < MIN_HEIGHT) {
-        errors.push(`Image must be at least ${MIN_WIDTH}×${MIN_HEIGHT} pixels. Yours is ${img.width}×${img.height}.`);
+        errors.push(
+          `Image must be at least ${MIN_WIDTH}×${MIN_HEIGHT} pixels. Yours is ${img.width}×${img.height}.`
+        );
       }
       resolve({
         valid: errors.length === 0,
@@ -48,11 +55,13 @@ export function validateImageDimensions(file) {
 export function getConfidenceLevel(score) {
   if (score >= 0.8) return 'high';
   if (score >= 0.6) return 'medium';
-  return 'low';
+  if (score >= 0.3) return 'low';
+  return 'out_of_scope';
 }
 
 export function getConfidenceColor(score) {
   if (score >= 0.8) return '#16a34a';
   if (score >= 0.6) return '#d97706';
-  return '#dc2626';
+  if (score >= 0.3) return '#dc2626';
+  return '#9333ea';
 }
