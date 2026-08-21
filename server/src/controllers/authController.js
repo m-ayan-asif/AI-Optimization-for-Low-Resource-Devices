@@ -33,7 +33,9 @@ async function register(req, res) {
     // Validate email domain exists
     const domainValid = await isEmailDomainValid(email);
     if (!domainValid) {
-      return res.status(400).json({ error: 'The email domain does not exist. Please use a valid email address.' });
+      return res
+        .status(400)
+        .json({ error: 'The email domain does not exist. Please use a valid email address.' });
     }
 
     // Age, gender, and region are required for both patients and clinicians
