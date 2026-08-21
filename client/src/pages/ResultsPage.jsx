@@ -3,7 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { getConfidenceLevel, getConfidenceColor } from '../utils/imageValidation';
-import { MapPin, Plus, AlertTriangle, Clock, FileText } from 'lucide-react';
+import { MapPin, Plus, AlertTriangle, Clock, FileText, Eye, ShieldAlert, CheckCircle2, XCircle, PenLine, Stethoscope, Mic } from 'lucide-react';
+
+const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
 export default function ResultsPage() {
   const { t } = useTranslation();
@@ -11,6 +13,7 @@ export default function ResultsPage() {
   const { getResults, loading } = useScreening();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(true);
 
   useEffect(() => {
     if (caseId) {
@@ -30,6 +33,7 @@ export default function ResultsPage() {
     return <div className="bg-red-50 text-red-600 p-6 rounded-2xl text-center border border-red-100">{error}</div>;
   }
 
+  const isLowConfidence = data.confidence_score < LOW_CONFIDENCE_THRESHOLD;
   const level = getConfidenceLevel(data.confidence_score);
   const allScores = data.all_scores || {};
   const sortedConditions = Object.entries(allScores).sort((a, b) => b[1] - a[1]);
@@ -43,10 +47,23 @@ export default function ResultsPage() {
         <h1 className="text-2xl font-bold text-gray-900">{t('results.title')}</h1>
       </div>
 
+      {/* Low confidence warning */}
+      {isLowConfidence && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex gap-4">
+          <ShieldAlert size={24} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-red-800 mb-1">{t('results.unidentified')}</h3>
+            <p className="text-sm text-red-700 leading-relaxed">{t('results.unidentifiedDesc')}</p>
+          </div>
+        </div>
+      )}
+
       {/* Top condition card */}
-      <div className="bg-white rounded-2xl border border-purple-100 p-7 shadow-sm">
+      <div className={`bg-white rounded-2xl border p-7 shadow-sm ${isLowConfidence ? 'border-red-200 opacity-75' : 'border-purple-100'}`}>
         <div className="text-sm text-gray-400 font-medium uppercase tracking-wide mb-1">{t('results.topCondition')}</div>
-        <div className="text-2xl font-bold text-gray-900 mb-4">{data.top_condition}</div>
+        <div className="text-2xl font-bold text-gray-900 mb-4">
+          {isLowConfidence ? t('results.inconclusive') : data.top_condition}
+        </div>
 
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-400 w-20">{t('results.confidence')}</div>
@@ -64,6 +81,12 @@ export default function ResultsPage() {
           </span>
         </div>
 
+        {isLowConfidence && (
+          <p className="text-sm text-gray-400 mt-3 italic">
+            {t('results.lowConfidenceNote', { condition: data.top_condition })}
+          </p>
+        )}
+
         {data.inference_time_ms && (
           <div className="flex items-center gap-1.5 text-sm text-gray-300 mt-4 pt-4 border-t border-gray-50">
             <Clock size={14} />
@@ -72,20 +95,51 @@ export default function ResultsPage() {
         )}
       </div>
 
+      {/* Grad-CAM Heatmap */}
+      {data.heatmap_url && (
+        <div className="bg-white rounded-2xl border border-purple-100 p-7 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Eye size={18} className="text-purple-500" />
+              {t('results.heatmap')}
+            </h3>
+            <button
+              onClick={() => setShowHeatmap(!showHeatmap)}
+              className="text-sm text-purple-600 font-medium cursor-pointer bg-transparent border-none hover:text-purple-700"
+            >
+              {showHeatmap ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {showHeatmap && (
+            <>
+              <div className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
+                <img
+                  src={data.heatmap_url}
+                  alt="Grad-CAM Heatmap"
+                  className="w-full object-contain max-h-96"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </div>
+              <p className="text-sm text-gray-400 mt-3">{t('results.heatmapDesc')}</p>
+            </>
+          )}
+        </div>
+      )}
+
       {/* All conditions breakdown */}
       <div className="bg-white rounded-2xl border border-gray-100 p-7">
         <h3 className="font-semibold text-gray-900 mb-5">{t('results.allConditions')}</h3>
         <div className="space-y-3.5">
           {sortedConditions.map(([condition, score], i) => (
             <div key={condition} className="flex items-center gap-4">
-              <span className={`text-sm w-44 shrink-0 ${i === 0 ? 'font-semibold text-purple-700' : 'text-gray-600'}`}>{condition}</span>
+              <span className={`text-sm w-44 shrink-0 ${i === 0 && !isLowConfidence ? 'font-semibold text-purple-700' : 'text-gray-600'}`}>{condition}</span>
               <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full animate-grow ${i === 0 ? 'bg-purple-500' : 'bg-purple-200'}`}
+                  className={`h-full rounded-full animate-grow ${i === 0 && !isLowConfidence ? 'bg-purple-500' : 'bg-purple-200'}`}
                   style={{ width: `${(score * 100).toFixed(0)}%` }}
                 />
               </div>
-              <span className={`text-sm w-12 text-right font-medium ${i === 0 ? 'text-purple-600' : 'text-gray-400'}`}>
+              <span className={`text-sm w-12 text-right font-medium ${i === 0 && !isLowConfidence ? 'text-purple-600' : 'text-gray-400'}`}>
                 {(score * 100).toFixed(0)}%
               </span>
             </div>
@@ -93,21 +147,49 @@ export default function ResultsPage() {
         </div>
       </div>
 
-      {/* Extracted symptoms */}
-      {data.symptoms && data.symptoms.length > 0 && (
+      {/* Voice recording / transcript */}
+      {data.transcript_id && (
         <div className="bg-white rounded-2xl border border-gray-100 p-7">
-          <h3 className="font-semibold text-gray-900 mb-4">{t('results.symptoms')}</h3>
-          <div className="flex flex-wrap gap-2">
-            {data.symptoms.map((s, i) => (
-              <span key={i} className="px-3.5 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">
-                {s.keyword}
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Mic size={18} className="text-purple-500" />
+              {t('results.symptoms')}
+            </h3>
+            {data.transcript_language && (
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
+                {data.transcript_language === 'ur' ? 'Urdu' : 'English'}
               </span>
-            ))}
+            )}
           </div>
-          {data.transcript_text && (
-            <p className="text-sm text-gray-400 mt-3 italic leading-relaxed">"{data.transcript_text}"</p>
+
+          {data.transcript_text ? (
+            <p className="text-sm text-gray-700 leading-relaxed italic bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              "{data.transcript_text}"
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              Voice recorded — transcription processing.
+            </p>
+          )}
+
+          {data.symptoms && data.symptoms.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-50">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2.5">Keywords</p>
+              <div className="flex flex-wrap gap-2">
+                {data.symptoms.map((s, i) => (
+                  <span key={i} className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">
+                    {s.keyword}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
         </div>
+      )}
+
+      {/* Clinician Review */}
+      {data.clinician_decision && (
+        <ClinicianReviewCard data={data} t={t} />
       )}
 
       {/* Disclaimer */}
@@ -130,6 +212,67 @@ export default function ResultsPage() {
         >
           <Plus size={16} /> {t('results.newScreening')}
         </Link>
+      </div>
+    </div>
+  );
+}
+
+const DECISION_CONFIG = {
+  accept: {
+    icon: <CheckCircle2 size={18} className="text-green-500 shrink-0" />,
+    label: (t) => t('clinician.feedback.accept'),
+    cardClass: 'bg-green-50 border-green-200',
+    badgeClass: 'bg-green-100 text-green-800 border-green-200',
+  },
+  dispute: {
+    icon: <XCircle size={18} className="text-amber-500 shrink-0" />,
+    label: (t) => t('clinician.feedback.dispute'),
+    cardClass: 'bg-amber-50 border-amber-200',
+    badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+  },
+  correct: {
+    icon: <PenLine size={18} className="text-blue-500 shrink-0" />,
+    label: (t) => t('clinician.feedback.correct'),
+    cardClass: 'bg-blue-50 border-blue-200',
+    badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
+  },
+};
+
+function ClinicianReviewCard({ data, t }) {
+  const cfg = DECISION_CONFIG[data.clinician_decision];
+  if (!cfg) return null;
+
+  return (
+    <div className={`rounded-2xl border p-6 ${cfg.cardClass}`}>
+      <div className="flex items-center gap-2 mb-4">
+        <Stethoscope size={18} className="text-gray-600" />
+        <h3 className="font-semibold text-gray-900">{t('results.clinicianReview')}</h3>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        {cfg.icon}
+        <span className={`text-sm font-semibold px-3 py-1 rounded-full border ${cfg.badgeClass}`}>
+          {cfg.label(t)}
+        </span>
+      </div>
+
+      {data.corrected_diagnosis && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 mb-1">{t('results.clinicianCorrectedDiagnosis')}</p>
+          <p className="text-sm font-semibold text-gray-900">{data.corrected_diagnosis}</p>
+        </div>
+      )}
+
+      {data.clinician_notes && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 mb-1">{t('results.clinicianNotes')}</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{data.clinician_notes}</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-4 pt-3 border-t border-black/10">
+        <Clock size={12} />
+        {t('results.reviewedBy')} {data.reviewer_username} · {new Date(data.reviewed_at).toLocaleString()}
       </div>
     </div>
   );

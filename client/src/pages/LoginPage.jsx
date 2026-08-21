@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -16,12 +16,36 @@ export default function LoginPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+
+    // Client-side validation
+    if (!form.username.trim()) {
+      setError(t('errors.usernameRequired'));
+      return;
+    }
+    if (!form.password) {
+      setError(t('errors.passwordRequired'));
+      return;
+    }
+
     setLoading(true);
     try {
-      await login(form.username, form.password);
-      navigate('/dashboard');
+      const userData = await login(form.username.trim(), form.password);
+      navigate(userData.role === 'clinician' ? '/clinician/dashboard' : '/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
+      const status = err.response?.status;
+      const serverMsg = err.response?.data?.error;
+
+      if (status === 401) {
+        setError(t('errors.invalidCredentials'));
+      } else if (status === 429) {
+        setError(t('errors.tooManyAttempts'));
+      } else if (!err.response) {
+        setError(t('errors.networkError'));
+      } else {
+        setError(serverMsg || t('errors.loginFailed'));
+      }
+      // Keep the username, only clear password
+      setForm((prev) => ({ ...prev, password: '' }));
     } finally {
       setLoading(false);
     }
@@ -42,8 +66,9 @@ export default function LoginPage() {
           <h2 className="text-xl font-semibold text-gray-900 mb-6">{t('auth.login')}</h2>
 
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-5 border border-red-100">
-              {error}
+            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-5 border border-red-100 flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -55,8 +80,8 @@ export default function LoginPage() {
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300"
-                placeholder="Enter your username"
-                required
+                placeholder={t('auth.usernamePlaceholder')}
+                autoComplete="username"
               />
             </div>
 
@@ -68,8 +93,8 @@ export default function LoginPage() {
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300 pr-11"
-                  placeholder="Enter your password"
-                  required
+                  placeholder={t('auth.passwordPlaceholder')}
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"

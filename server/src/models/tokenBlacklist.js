@@ -12,7 +12,7 @@ const blacklist = new Set();
  */
 const addToBlacklist = (token) => {
   blacklist.add(token);
-  console.log('🚫 Token added to blacklist');
+  console.log('Token added to blacklist');
 };
 
 /**
@@ -30,7 +30,7 @@ const isBlacklisted = (token) => {
  */
 const removeFromBlacklist = (token) => {
   blacklist.delete(token);
-  console.log('✅ Token removed from blacklist');
+  console.log('Token removed from blacklist');
 };
 
 /**
@@ -46,7 +46,7 @@ const getBlacklistSize = () => {
  */
 const clearBlacklist = () => {
   blacklist.clear();
-  console.log('🗑️ Blacklist cleared');
+  console.log('Blacklist cleared');
 };
 
 module.exports = {

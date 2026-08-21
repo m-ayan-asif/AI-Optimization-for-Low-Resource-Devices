@@ -12,19 +12,24 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (req, file, cb) => {
-  const allowed = ['image/jpeg', 'image/png'];
-  if (allowed.includes(file.mimetype)) {
+const imageFilter = (req, file, cb) => {
+  if (['image/jpeg', 'image/png'].includes(file.mimetype)) {
     cb(null, true);
   } else {
     cb(new Error('Only JPEG and PNG images are allowed'), false);
   }
 };
 
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-});
+const audioFilter = (req, file, cb) => {
+  // Browsers append codec info e.g. "audio/webm;codecs=opus" — check prefix only
+  if (file.mimetype.startsWith('audio/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Unsupported audio format'), false);
+  }
+};
 
-module.exports = upload;
+const imageUpload = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 10 * 1024 * 1024 } });
+const audioUpload = multer({ storage, fileFilter: audioFilter, limits: { fileSize: 25 * 1024 * 1024 } });
+
+module.exports = { imageUpload, audioUpload };

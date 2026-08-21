@@ -1,12 +1,63 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const dns = require('dns').promises;
 const db = require('../models/db');
 const config = require('../config');
 const { addToBlacklist } = require('../models/tokenBlacklist');
 
+async function isEmailDomainValid(email) {
+  const domain = email.split('@')[1];
+  if (!domain) return false;
+  try {
+    const mx = await dns.resolveMx(domain);
+    return mx.length > 0;
+  } catch {
+    try {
+      await dns.resolve(domain);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function register(req, res) {
   try {
     const { username, email, password, role, age, gender, region } = req.body;
+
+    // Validate username contains at least one letter
+    if (!username || !/[a-zA-Z]/.test(username)) {
+      return res.status(400).json({ error: 'Username must contain at least one letter.' });
+    }
+
+    // Validate email domain exists
+    const domainValid = await isEmailDomainValid(email);
+    if (!domainValid) {
+      return res
+        .status(400)
+        .json({ error: 'The email domain does not exist. Please use a valid email address.' });
+    }
+
+    // Age, gender, and region are required for both patients and clinicians
+    const userRole = role || 'patient';
+    const roleLabel = userRole === 'patient' ? 'patient' : 'clinician';
+    if (!age && age !== 0) {
+      return res.status(400).json({ error: `Age is required for ${roleLabel} accounts.` });
+    }
+    if (!gender) {
+      return res.status(400).json({ error: `Gender is required for ${roleLabel} accounts.` });
+    }
+    if (!region) {
+      return res.status(400).json({ error: `Region is required for ${roleLabel} accounts.` });
+    }
+
+    // Validate age value
+    if (age !== undefined && age !== null && age !== '') {
+      const ageNum = Number(age);
+      if (!Number.isInteger(ageNum) || ageNum < 1 || ageNum > 120) {
+        return res.status(400).json({ error: 'Age must be a whole number between 1 and 120.' });
+      }
+    }
 
     // Check if user exists
     const existing = await db.query('SELECT user_id FROM users WHERE username = $1 OR email = $2', [
@@ -30,6 +81,11 @@ async function register(req, res) {
     if (user.role === 'patient') {
       await db.query(
         'INSERT INTO patient_profiles (patient_id, age, gender, region) VALUES ($1, $2, $3, $4)',
+        [user.user_id, age || null, gender || null, region || null]
+      );
+    } else if (user.role === 'clinician') {
+      await db.query(
+        'INSERT INTO clinician_profiles (clinician_id, age, gender, region) VALUES ($1, $2, $3, $4)',
         [user.user_id, age || null, gender || null, region || null]
       );
     }
@@ -139,7 +195,7 @@ async function logout(req, res) {
       [userId, 'logout', 'user', userId]
     );
 
-    console.log(` User ${userId} logged out successfully`);
+    console.log(`User ${userId} logged out successfully`);
 
     res.json({
       success: true,

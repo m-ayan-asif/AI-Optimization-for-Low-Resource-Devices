@@ -40,19 +40,47 @@ export function useScreening() {
     }
   }
 
-  async function submitVoice(id, audioBlob, language) {
+  async function submitVoice(id, audioBlob, language, additionalText = null) {
     setLoading(true);
     setError(null);
     try {
       const formData = new FormData();
-      if (audioBlob) formData.append('audio', audioBlob, 'recording.webm');
-      formData.append('language', language);
+      if (audioBlob) {
+        // Browser hook converts to WAV before this point; fall back to webm extension if not
+        const ext = audioBlob.type.includes('wav') ? '.wav'
+          : audioBlob.type.includes('ogg') ? '.ogg'
+          : audioBlob.type.includes('mp4') ? '.mp4'
+          : '.webm';
+        formData.append('audio', audioBlob, `recording${ext}`);
+      }
+      // Roman Urdu is still Urdu for the server's language field
+      formData.append('language', language === 'en' ? 'en' : 'ur');
+      if (additionalText && additionalText.trim()) {
+        formData.append('additionalText', additionalText.trim());
+      }
       const res = await api.post(`/screening/${id}/voice`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return res.data;
     } catch (err) {
       setError(err.response?.data?.error || 'Voice processing failed');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitTextInput(id, text, language) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post(`/screening/${id}/text-input`, {
+        text,
+        language,
+      });
+      return res.data;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Text submission failed');
       throw err;
     } finally {
       setLoading(false);
@@ -112,10 +140,12 @@ export function useScreening() {
     caseId,
     loading,
     error,
+    setError,
     results,
     createCase,
     uploadImage,
     submitVoice,
+    submitTextInput,
     runInference,
     getResults,
     getHistory,

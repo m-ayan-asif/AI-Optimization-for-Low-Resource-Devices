@@ -9,7 +9,9 @@
     "history": "تاریخچہ",
     "clinics": "قریبی کلینک",
     "logout": "لاگ آؤٹ",
-    "profile": "پروفائل"
+    "profile": "پروفائل",
+    "clinicianDashboard": "ڈیش بورڈ",
+    "clinicianHistory": "مقدمات کی تاریخ"
   },
   "auth": {
     "login": "لاگ ان",
@@ -30,7 +32,31 @@
     "noAccount": "اکاؤنٹ نہیں ہے؟",
     "hasAccount": "پہلے سے اکاؤنٹ ہے؟",
     "loginHere": "یہاں لاگ ان کریں",
-    "registerHere": "یہاں رجسٹر کریں"
+    "registerHere": "یہاں رجسٹر کریں",
+    "usernamePlaceholder": "اپنا صارف نام درج کریں",
+    "passwordPlaceholder": "اپنا پاسورڈ درج کریں",
+    "emailPlaceholder": "your@email.com",
+    "confirmPlaceholder": "پاسورڈ دوبارہ درج کریں"
+  },
+  "errors": {
+    "usernameRequired": "براہ کرم اپنا صارف نام درج کریں۔",
+    "usernameTooShort": "صارف نام کم از کم 3 حروف کا ہونا چاہیے۔",
+    "usernameNoLetters": "صارف نام میں کم از کم ایک حرف ہونا چاہیے۔",
+    "ageRequired": "براہ کرم اپنی عمر درج کریں۔",
+    "genderRequired": "براہ کرم اپنی جنس منتخب کریں۔",
+    "regionRequired": "براہ کرم اپنا علاقہ منتخب کریں۔",
+    "passwordRequired": "براہ کرم اپنا پاسورڈ درج کریں۔",
+    "passwordTooShort": "پاسورڈ کم از کم 6 حروف کا ہونا چاہیے۔",
+    "passwordMismatch": "پاسورڈ مماثل نہیں ہیں۔",
+    "emailRequired": "براہ کرم اپنا ای میل ایڈریس درج کریں۔",
+    "emailInvalid": "براہ کرم درست ای میل ایڈریس درج کریں۔",
+    "emailDomainInvalid": "ای میل ڈومین موجود نہیں ہے۔ براہ کرم درست ای میل ایڈریس استعمال کریں۔",
+    "invalidCredentials": "غلط صارف نام یا پاسورڈ۔ براہ کرم دوبارہ کوشش کریں۔",
+    "userExists": "یہ صارف نام یا ای میل پہلے سے رجسٹرڈ ہے۔",
+    "tooManyAttempts": "بہت زیادہ کوششیں۔ براہ کرم تھوڑی دیر انتظار کریں۔",
+    "networkError": "سرور سے رابطہ نہیں ہو سکا۔ براہ کرم اپنا انٹرنیٹ کنکشن چیک کریں۔",
+    "loginFailed": "لاگ ان ناکام۔ براہ کرم دوبارہ کوشش کریں۔",
+    "registrationFailed": "رجسٹریشن ناکام۔ براہ کرم دوبارہ کوشش کریں۔"
   },
   "dashboard": {
     "welcome": "خوش آمدید",
@@ -49,18 +75,22 @@
     "uploadBtn": "تصویر اپلوڈ کریں",
     "captureBtn": "تصویر لیں",
     "dragDrop": "تصویر یہاں ڈراپ کریں یا براؤز کرنے کے لیے کلک کریں",
-    "requirements": "JPEG یا PNG، کم از کم 500×500 پکسل، واضح روشنی",
+    "requirements": "JPEG یا PNG، کم از کم 300×300 پکسل، واضح روشنی",
     "voiceTitle": "اپنی علامات بیان کریں",
-    "voiceDesc": "اختیاری: اردو یا انگریزی میں اپنی علامات کی آواز ریکارڈ کریں۔",
+    "voiceDesc": "اختیاری: آواز سے یا لکھ کر اپنی علامات بتائیں۔ انگریزی، اردو، یا رومن اردو میں لکھ سکتے ہیں۔",
     "voiceRecord": "ریکارڈنگ شروع کریں",
     "voiceStop": "ریکارڈنگ بند کریں",
     "voiceSkip": "یہ مرحلہ چھوڑیں",
-    "voiceLang": "ریکارڈنگ کی زبان",
+    "voiceLang": "زبان",
     "analyzing": "آپ کی تصویر کا تجزیہ ہو رہا ہے...",
     "analyzingDesc": "ہمارا اے آئی آپ کی جلد کی تصویر کا جائزہ لے رہا ہے۔",
     "next": "اگلا",
     "back": "واپس",
-    "submit": "تجزیہ شروع کریں"
+    "submit": "تجزیہ شروع کریں",
+    "textTitle": "یا لکھ کر بیان کریں",
+    "textPlaceholder": "اپنی علامات یہاں لکھیں — اردو، انگریزی، یا رومن اردو میں (مثلاً \"mujhe khujli ho rahi hai\")",
+    "textLabel": "تحریری وضاحت",
+    "langRomanUrdu": "رومن اردو"
   },
   "results": {
     "title": "جانچ کے نتائج",
@@ -73,7 +103,15 @@
     "disclaimer": "یہ ابتدائی جانچ کا نتیجہ ہے، طبی تشخیص نہیں۔ براہ کرم پیشہ ور ماہر امراض جلد سے مشورہ کریں۔",
     "findClinic": "قریبی کلینک تلاش کریں",
     "newScreening": "نئی اسکریننگ",
-    "inferenceTime": "تجزیہ مکمل ہوا"
+    "inferenceTime": "تجزیہ مکمل ہوا",
+    "unidentified": "بیماری کی شناخت نہیں ہو سکی",
+    "unidentifiedDesc": "اے آئی اسکریننگ کافی اعتماد کے ساتھ بیماری کی شناخت نہیں کر سکی۔ یہ تصویر کے معیار، بیماری کے اس نظام کی حد سے باہر ہونے، یا متاثرہ حصے کے واضح نہ ہونے کی وجہ سے ہو سکتا ہے۔ براہ کرم ماہر امراض جلد سے مشورہ کریں۔",
+    "inconclusive": "غیر حتمی",
+    "lowConfidenceNote": "قریب ترین مماثلت: {{condition}} — لیکن اعتماد بہت کم ہے۔",
+    "clinicianReview": "ڈاکٹر کا جائزہ",
+    "clinicianNotes": "ڈاکٹر کے نوٹس",
+    "clinicianCorrectedDiagnosis": "درست تشخیص",
+    "reviewedBy": "جائزہ لیا"
   },
   "history": {
     "title": "اسکریننگ کی تاریخ",
@@ -101,6 +139,59 @@
     "retry": "دوبارہ کوشش کریں",
     "cancel": "منسوخ",
     "save": "محفوظ کریں",
-    "ms": "ملی سیکنڈ"
+    "ms": "ملی سیکنڈ",
+    "optional": "اختیاری"
+  },
+  "clinician": {
+    "dashboard": {
+      "title": "کلینیشن ڈیش بورڈ",
+      "welcome": "خوش آمدید",
+      "totalCases": "کل مقدمات",
+      "pending": "جائزے کی انتظار",
+      "reviewed": "کل جائزہ شدہ",
+      "myReviews": "میرے جائزے",
+      "myFeedbackBreakdown": "میری رائے کی تفصیل",
+      "pendingCases": "جائزے کے انتظار میں مقدمات",
+      "viewAll": "تمام مقدمات دیکھیں",
+      "noPending": "جائزے کے لیے کوئی مقدمہ نہیں۔"
+    },
+    "cases": {
+      "reviewTitle": "مقدمے کا جائزہ",
+      "caseId": "مقدمہ نمبر",
+      "patientInfo": "مریض کی معلومات",
+      "username": "صارف نام",
+      "submitted": "جمع کرنے کی تاریخ",
+      "noCondition": "ابھی تک کوئی تشخیص نہیں"
+    },
+    "feedback": {
+      "title": "طبی رائے",
+      "decision": "فیصلہ",
+      "accept": "قبول کریں",
+      "dispute": "اعتراض",
+      "correct": "درست کریں",
+      "correctedDiagnosis": "درست تشخیص",
+      "correctedDiagnosisPlaceholder": "درست تشخیص درج کریں",
+      "notes": "نوٹس",
+      "notesPlaceholder": "کوئی طبی نوٹس یا مشاہدات شامل کریں...",
+      "submit": "رائے جمع کریں",
+      "submitted": "رائے جمع ہو گئی",
+      "submittedDesc": "آپ کا طبی جائزہ کامیابی سے ریکارڈ کر لیا گیا۔",
+      "decisionRequired": "جمع کرنے سے پہلے براہ کرم فیصلہ منتخب کریں۔",
+      "correctedDiagnosisRequired": "براہ کرم درست تشخیص فراہم کریں۔",
+      "submitFailed": "رائے جمع کرنے میں ناکامی۔ دوبارہ کوشش کریں۔",
+      "alreadyReviewed": "یہ مقدمہ پہلے سے {{reviewer}} نے جائزہ لیا ہے۔ آپ نیچے فیصلہ اپ ڈیٹ کر سکتے ہیں۔",
+      "you": "آپ"
+    },
+    "history": {
+      "title": "مقدمات کی تاریخ",
+      "empty": "منتخب فلٹر کے لیے کوئی مقدمہ نہیں ملا۔",
+      "filter": {
+        "all": "تمام مقدمات",
+        "pending": "زیر التوا",
+        "accept": "قبول شدہ",
+        "dispute": "اعتراض شدہ",
+        "correct": "درست شدہ"
+      }
+    }
   }
 }

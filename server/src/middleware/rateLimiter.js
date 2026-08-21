@@ -15,9 +15,9 @@ const loginLimiter = rateLimit({
 
   // Custom handler for rate limit exceeded
   handler: (req, res) => {
-    console.log(` Rate limit exceeded for IP: ${req.ip}`);
+    console.log(`Rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
-      error: 'Too many login attempts. Please try again after 15 minutes.',
+      error: 'Too many login attempts. Please try again after 2 minutes.',
       retryAfter: '2 minutes',
     });
   },
@@ -43,7 +43,7 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 
   handler: (req, res) => {
-    console.log(` Registration rate limit exceeded for IP: ${req.ip}`);
+    console.log(`Registration rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many registration attempts. Please try again after 1 hour.',
       retryAfter: '1 hour',
@@ -65,7 +65,7 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 
   handler: (req, res) => {
-    console.log(` API rate limit exceeded for IP: ${req.ip}`);
+    console.log(`API rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many requests. Please try again later.',
       retryAfter: '15 minutes',
