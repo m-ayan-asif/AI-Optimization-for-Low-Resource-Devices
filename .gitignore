@@ -16,3 +16,25 @@ models/
 
 # Conda
 *.conda
+
+# Node
+node_modules/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Patient data generated at runtime (uploaded images, Grad-CAM heatmaps)
+uploads/
+heatmaps/
+inference/models/*.pth
+
+# Test/coverage output
+coverage/
+htmlcov/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
