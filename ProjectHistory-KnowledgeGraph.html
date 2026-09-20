@@ -1,0 +1,744 @@
+<title>SkinSense Atlas</title>
+<style>
+  :root{
+    color-scheme: light;
+    --surface-1:#f9f9f7;
+    --surface-2:#fcfcfb;
+    --surface-3:#f1f0ec;
+    --text-primary:#0b0b0b;
+    --text-secondary:#52514e;
+    --text-muted:#898781;
+    --border:rgba(11,11,11,0.10);
+    --border-strong:rgba(11,11,11,0.18);
+    --edge:rgba(11,11,11,0.16);
+    --edge-active:rgba(11,11,11,0.55);
+    --c-model:#2a78d6;
+    --c-decision:#eb6834;
+    --c-dataset:#1baf7a;
+    --c-infra:#eda100;
+    --c-person:#e87ba4;
+    --c-project:#008300;
+    --c-concept:#4a3aa7;
+    --c-artifact:#e34948;
+    --shadow: 0 12px 32px -12px rgba(11,11,11,0.28);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --surface-1:#0d0d0d;
+      --surface-2:#1a1a19;
+      --surface-3:#232322;
+      --text-primary:#ffffff;
+      --text-secondary:#c3c2b7;
+      --text-muted:#8b8a83;
+      --border:rgba(255,255,255,0.10);
+      --border-strong:rgba(255,255,255,0.20);
+      --edge:rgba(255,255,255,0.16);
+      --edge-active:rgba(255,255,255,0.62);
+      --c-model:#3987e5;
+      --c-decision:#d95926;
+      --c-dataset:#199e70;
+      --c-infra:#c98500;
+      --c-person:#d55181;
+      --c-project:#1fae1f;
+      --c-concept:#9085e9;
+      --c-artifact:#e66767;
+      --shadow: 0 12px 32px -12px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --surface-1:#0d0d0d;
+    --surface-2:#1a1a19;
+    --surface-3:#232322;
+    --text-primary:#ffffff;
+    --text-secondary:#c3c2b7;
+    --text-muted:#8b8a83;
+    --border:rgba(255,255,255,0.10);
+    --border-strong:rgba(255,255,255,0.20);
+    --edge:rgba(255,255,255,0.16);
+    --edge-active:rgba(255,255,255,0.62);
+    --c-model:#3987e5;
+    --c-decision:#d95926;
+    --c-dataset:#199e70;
+    --c-infra:#c98500;
+    --c-person:#d55181;
+    --c-project:#1fae1f;
+    --c-concept:#9085e9;
+    --c-artifact:#e66767;
+    --shadow: 0 12px 32px -12px rgba(0,0,0,0.6);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--surface-1);
+    color:var(--text-primary);
+    font-family:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace; }
+
+  /* ---------- top bar ---------- */
+  header{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:10px 16px;
+    padding-top:calc(10px + env(safe-area-inset-top,0px));
+    border-bottom:1px solid var(--border);
+    background:var(--surface-2);
+    z-index:20;
+    flex-wrap:wrap;
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    flex:0 0 auto;
+  }
+  .brand h1{
+    font-size:16px;
+    font-weight:700;
+    margin:0;
+    letter-spacing:-0.01em;
+    white-space:nowrap;
+  }
+  .brand .tag{
+    font-size:10.5px;
+    color:var(--text-muted);
+    font-family:"IBM Plex Mono", monospace;
+    white-space:nowrap;
+    letter-spacing:.02em;
+  }
+  .search-wrap{
+    position:relative;
+    flex:1 1 200px;
+    min-width:140px;
+    max-width:320px;
+  }
+  .search-wrap input{
+    width:100%;
+    padding:7px 10px 7px 30px;
+    border-radius:8px;
+    border:1px solid var(--border-strong);
+    background:var(--surface-1);
+    color:var(--text-primary);
+    font-size:13px;
+    font-family:inherit;
+    outline:none;
+  }
+  .search-wrap input:focus{ border-color:var(--c-model); }
+  .search-wrap svg{
+    position:absolute;
+    left:9px; top:50%; transform:translateY(-50%);
+    width:14px; height:14px;
+    color:var(--text-muted);
+    pointer-events:none;
+  }
+  .chips{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    flex:1 1 auto;
+  }
+  .chip{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    padding:5px 9px;
+    border-radius:999px;
+    border:1px solid var(--border-strong);
+    background:var(--surface-1);
+    font-size:11.5px;
+    color:var(--text-secondary);
+    cursor:pointer;
+    user-select:none;
+    transition:opacity .15s ease, border-color .15s ease;
+    white-space:nowrap;
+  }
+  .chip .dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  .chip .n{ font-family:"IBM Plex Mono",monospace; color:var(--text-muted); font-size:10.5px; }
+  .chip.off{ opacity:.38; }
+  .chip:hover{ border-color:var(--border-strong); filter:brightness(1.05); }
+  .reset-btn{
+    flex:0 0 auto;
+    padding:6px 12px;
+    border-radius:8px;
+    border:1px solid var(--border-strong);
+    background:var(--surface-1);
+    color:var(--text-secondary);
+    font-size:12px;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .reset-btn:hover{ color:var(--text-primary); border-color:var(--border-strong); }
+
+  /* ---------- stage ---------- */
+  main{
+    position:relative;
+    flex:1 1 auto;
+    min-height:0;
+  }
+  canvas{
+    display:block;
+    width:100%;
+    height:100%;
+    cursor:grab;
+  }
+  canvas.dragging{ cursor:grabbing; }
+
+  .caption{
+    position:absolute;
+    left:16px;
+    bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    max-width:min(560px, calc(100vw - 32px));
+    font-size:11.5px;
+    line-height:1.5;
+    color:var(--text-muted);
+    background:color-mix(in srgb, var(--surface-2) 82%, transparent);
+    backdrop-filter:blur(6px);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:8px 11px;
+    pointer-events:none;
+  }
+  .caption b{ color:var(--text-secondary); font-weight:600; }
+
+  .hint{
+    position:absolute;
+    right:16px;
+    bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    font-size:10.5px;
+    color:var(--text-muted);
+    font-family:"IBM Plex Mono",monospace;
+    text-align:right;
+    pointer-events:none;
+  }
+
+  .tooltip{
+    position:absolute;
+    pointer-events:none;
+    padding:5px 9px;
+    background:var(--text-primary);
+    color:var(--surface-1);
+    font-size:11.5px;
+    border-radius:6px;
+    transform:translate(-50%, -130%);
+    white-space:nowrap;
+    opacity:0;
+    transition:opacity .08s ease;
+    z-index:15;
+    font-weight:500;
+  }
+
+  /* ---------- side panel ---------- */
+  #panel{
+    position:absolute;
+    top:0; right:0; bottom:0;
+    width:min(340px, 86vw);
+    background:var(--surface-2);
+    border-left:1px solid var(--border);
+    box-shadow:var(--shadow);
+    transform:translateX(100%);
+    transition:transform .22s cubic-bezier(.2,.8,.3,1);
+    z-index:25;
+    display:flex;
+    flex-direction:column;
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  #panel.open{ transform:translateX(0); }
+  .panel-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+    padding:16px 16px 10px;
+    border-bottom:1px solid var(--border);
+  }
+  .panel-head h2{
+    font-size:16px;
+    margin:0 0 6px;
+    line-height:1.25;
+    font-weight:700;
+  }
+  .type-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:10.5px;
+    font-family:"IBM Plex Mono",monospace;
+    padding:3px 8px;
+    border-radius:999px;
+    background:var(--surface-3);
+    color:var(--text-secondary);
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  .type-badge .dot{ width:7px; height:7px; border-radius:50%; }
+  .panel-close{
+    flex:0 0 auto;
+    width:26px; height:26px;
+    border-radius:7px;
+    border:1px solid var(--border-strong);
+    background:transparent;
+    color:var(--text-secondary);
+    cursor:pointer;
+    font-size:15px;
+    line-height:1;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .panel-close:hover{ background:var(--surface-3); }
+  .panel-body{
+    flex:1 1 auto;
+    overflow-y:auto;
+    padding:14px 16px 20px;
+  }
+  .panel-desc{
+    font-size:13px;
+    line-height:1.55;
+    color:var(--text-secondary);
+    margin:0 0 18px;
+  }
+  .rel-section h3{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--text-muted);
+    margin:0 0 8px;
+    font-weight:600;
+  }
+  .rel-list{
+    list-style:none;
+    margin:0 0 18px;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .rel-item{
+    display:flex;
+    flex-direction:column;
+    gap:1px;
+    padding:7px 8px;
+    border-radius:7px;
+    cursor:pointer;
+  }
+  .rel-item:hover{ background:var(--surface-3); }
+  .rel-rel{
+    font-size:10px;
+    font-family:"IBM Plex Mono",monospace;
+    color:var(--text-muted);
+    text-transform:lowercase;
+  }
+  .rel-target{
+    font-size:12.5px;
+    color:var(--text-primary);
+    font-weight:500;
+  }
+  .rel-ctx{
+    font-size:11px;
+    color:var(--text-muted);
+    line-height:1.4;
+  }
+  .empty-panel{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height:100%;
+    padding:32px;
+    text-align:center;
+    color:var(--text-muted);
+    font-size:12.5px;
+    gap:6px;
+  }
+
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border-strong); border-radius:6px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  @media (max-width:640px){
+    .brand .tag{ display:none; }
+    .chips{ display:none; }
+    #panel{ width:100vw; }
+    .caption{ display:none; }
+  }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<header>
+  <div class="brand">
+    <h1>SkinSense Atlas</h1>
+    <span class="tag mono" id="counts">209 nodes · 246 edges</span>
+  </div>
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="search" type="text" placeholder="Search entities…" autocomplete="off">
+  </div>
+  <div class="chips" id="chips"></div>
+  <button class="reset-btn" id="resetBtn">Reset view</button>
+</header>
+
+<main>
+  <canvas id="stage"></canvas>
+  <div class="tooltip" id="tooltip"></div>
+  <div class="caption" id="caption">
+    <b>The arc:</b> hardware setup → dataset sourcing → MobileNetV3 baseline → EfficientNet-B3 teacher &amp; distillation → brain-inspired architecture tangent → PWA pivot → mid-eval feedback → iteration&nbsp;1 feedback &amp; CLIP → coding-skills rebuild → publishable-paper goal.
+  </div>
+  <div class="hint mono" id="hint">drag to pan · scroll to zoom · click a node</div>
+  <div id="panel">
+    <div class="empty-panel">
+      <div style="font-size:22px;">🕸️</div>
+      <div>Click any node to see its description<br>and every relationship it's part of.</div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const KG = {"nodes": [{"id": "Ayan", "type": "Person", "desc": "FYP student, project owner, targets SkinSense DermAI for edge devices"}, {"id": "RTX 4060", "type": "Hardware", "desc": "Zotac GPU, CUDA-capable, used for local ML training"}, {"id": "Ryzen 5600", "type": "Hardware", "desc": "AMD CPU, no integrated graphics"}, {"id": "ASRock B550M Pro SE", "type": "Hardware", "desc": "Motherboard, source of chipset/LAN/audio drivers and BIOS/XMP settings"}, {"id": "Corsair Vengeance RAM", "type": "Hardware", "desc": "2x16GB, XMP instability caused crashes at top speed, required voltage/timing tuning"}, {"id": "Windows 11 Pro", "type": "Software", "desc": "Clean OS install, debloated via Chris Titus Tech + O&O ShutUp10++"}, {"id": "WSL2/Ubuntu", "type": "Software", "desc": "Linux dev environment on Windows, hosts conda/PyTorch/project work"}, {"id": "Miniconda", "type": "Software", "desc": "Python environment manager, used to create dermai and grounded envs"}, {"id": "dermai (conda env)", "type": "Software", "desc": "Python 3.11 environment for SkinSense/FYP ML work"}, {"id": "grounded (conda env)", "type": "Software", "desc": "Python 3.11 environment for the Grounded productivity app"}, {"id": "PyTorch", "type": "Software", "desc": "ML framework, CUDA 12.6 build, installed via pip in WSL, GPU-verified"}, {"id": "Git/GitHub", "type": "Software", "desc": "Version control; account m-ayan-asif"}, {"id": "Flutter", "type": "Software", "desc": "Cross-platform mobile framework (Android/iOS), installed on Windows side (not WSL)"}, {"id": "Android Studio", "type": "Software", "desc": "Provides Android SDK/cmdline-tools required by Flutter"}, {"id": "Oh My Zsh / Powerlevel10k", "type": "Software", "desc": "Terminal customization (zsh theme, autosuggestions, syntax-highlighting)"}, {"id": "SkinSense", "type": "Project", "desc": "FYP: DermAI for low-resource/rural edge devices, offline+online CNN+NLP"}, {"id": "Grounded", "type": "Project", "desc": "Separate productivity/task-blocking app project (Android+iOS via Flutter)"}, {"id": "AI-Optimization-for-Low-Resource-Devices", "type": "Project", "desc": "GitHub repo (github.com/m-ayan-asif/AI-Optimization-for-Low-Resource-Devices) hosting SkinSense code"}, {"id": "Target Conditions (7-class)", "type": "Decision", "desc": "Vitiligo, Melasma, Psoriasis, Eczema, Tinea, Contact Dermatitis, Seborrheic Dermatitis"}, {"id": "ISIC Archive", "type": "Dataset", "desc": "Initially suggested general dermatology dataset, later abandoned for targeted datasets"}, {"id": "SCIN", "type": "Dataset", "desc": "Google Skin Condition Image Network, 889 filtered images across 7 classes"}, {"id": "SkinDisNet", "type": "Dataset", "desc": "Clinical images dataset, 1297 filtered images"}, {"id": "DermaCon-IN", "type": "Dataset", "desc": "Indian dermatology dataset, 2688 filtered images, richest source"}, {"id": "HAM10000", "type": "Dataset", "desc": "Wrongly downloaded dataset (mislabeled as DermaCon-IN), discarded, not used"}, {"id": "master_dataset.csv", "type": "File", "desc": "Combined 4874-image dataset across SCIN+SkinDisNet+DermaCon-IN"}, {"id": "train.csv/val.csv/test.csv", "type": "File", "desc": "Stratified 64/16/20 split (3119/780/975 images), random_state=42"}, {"id": "MobileNetV3", "type": "Model", "desc": "Chosen lightweight CNN backbone for mobile deployment via transfer learning"}, {"id": "TensorFlow Lite", "type": "Software", "desc": "Target mobile deployment format (quantized) — planned early on"}, {"id": "Quantization", "type": "Concept", "desc": "32-bit to 8-bit weight compression planned for mobile model size reduction"}, {"id": "TinyBERT/DistilBERT/Phi-2", "type": "Model", "desc": "Candidate lightweight NLP models discussed for on-device symptom NLP (early ideation)"}, {"id": "01_data_exploration.ipynb", "type": "File", "desc": "First notebook: dataset structure exploration, GPU check"}, {"id": "02_data_preprocessing.ipynb", "type": "File", "desc": "Notebook: label unification, class mapping, train/val/test split"}, {"id": "03_model_training.ipynb", "type": "File", "desc": "Notebook: CNN training setup (started at end of this chunk)"}, {"id": "Class Imbalance", "type": "Concept", "desc": "Melasma (85 imgs) and Seborrheic Dermatitis (146 imgs) flagged as weak classes"}, {"id": "Two-Stage Classification Idea", "type": "Decision", "desc": "Proposed (not committed) hierarchical model"}, {"id": "Personal Access Token", "type": "Concept", "desc": "GitHub auth workaround after password auth deprecation"}, {"id": "Low-resource rural devices", "type": "Concept", "desc": ""}, {"id": "XMP profile", "type": "Concept", "desc": ""}, {"id": "BIOS settings", "type": "Concept", "desc": ""}, {"id": "Ms. Azka Atiq", "type": "Concept", "desc": "FYP supervisor / domain expert validator"}, {"id": "Dr. Ahmad Raza", "type": "Concept", "desc": "FYP supervisor / domain expert validator"}, {"id": "Claude", "type": "Person", "desc": "AI assistant guiding data pipeline, model architecture, and debugging decisions"}, {"id": "Vitiligo", "type": "Concept", "desc": "Target skin condition class; consistently strong performer (F1 0.68 to 0.85)"}, {"id": "Melasma", "type": "Concept", "desc": "Target class; smallest dataset (85 images) but high recall throughout"}, {"id": "Psoriasis", "type": "Concept", "desc": "Target class; weakest performer initially (F1 0.36), biggest augmentation priority"}, {"id": "Eczema", "type": "Concept", "desc": "Target class; confused clinically with Contact Dermatitis and Psoriasis"}, {"id": "Tinea", "type": "Concept", "desc": "Target class; largest initial dataset (1545 images), strong baseline performer"}, {"id": "Contact Dermatitis", "type": "Concept", "desc": "Target class; persistently weak/confused with Eczema"}, {"id": "Seborrheic Dermatitis", "type": "Concept", "desc": "Target class; worst-represented condition across all datasets"}, {"id": "DermNet", "type": "Dataset", "desc": "Kaggle-sourced dermatology atlas; mined via filename regex for target classes"}, {"id": "SkinDiseaseImage", "type": "Dataset", "desc": "Kaggle dataset (ismailpromus/skin-diseases-image-dataset), 10 numbered folders"}, {"id": "SkinDataset (class)", "type": "Concept", "desc": "Custom PyTorch Dataset wrapping image loading + label mapping"}, {"id": "Stratified random split", "type": "Decision", "desc": "Chosen train/val/test split method preserving class proportions"}, {"id": "Class weighting (CrossEntropyLoss)", "type": "Concept", "desc": "Inverse-frequency loss weighting to counter class imbalance"}, {"id": "Weighted sampling", "type": "Decision", "desc": "Oversampling minority classes during training, replaces class-weight-only approach"}, {"id": "MobileNetV3-Small", "type": "Model", "desc": "Initial baseline/student model (1.08M params); ImageNet-pretrained"}, {"id": "Phase 1 training (frozen backbone)", "type": "Milestone", "desc": "MobileNetV3 baseline: 52.05% val accuracy"}, {"id": "Phase 2 training (fine-tuned)", "type": "Milestone", "desc": "MobileNetV3 fine-tuned: ~61% val acc, 56% test accuracy"}, {"id": "best_model.pth", "type": "File", "desc": "Saved MobileNetV3 frozen-phase checkpoint"}, {"id": "best_model_finetuned.pth", "type": "File", "desc": "Saved MobileNetV3 fine-tuned checkpoint"}, {"id": "confusion_matrix.png", "type": "File", "desc": "Saved visualization revealing Eczema/Psoriasis/Contact Dermatitis confusion triangle"}, {"id": "MobileNetV3 augmented retrain", "type": "Milestone", "desc": "After dataset augmentation: 59% test accuracy"}, {"id": "EfficientNet-B4", "type": "Model", "desc": "Considered as teacher candidate; rejected in favor of B3 due to overfitting risk"}, {"id": "EfficientNet-B3 (Teacher)", "type": "Model", "desc": "Final chosen teacher architecture"}, {"id": "BatchNorm instability", "type": "Concept", "desc": "ImageNet BatchNorm stats mismatched skin data when freezing EfficientNet-B3 backbone"}, {"id": "Selective unfreezing (Teacher v3)", "type": "Decision", "desc": "Attempted fix; failed, dropped val acc to 41%"}, {"id": "teacher_best.pth", "type": "File", "desc": "Saved final EfficientNet-B3 teacher checkpoint"}, {"id": "Knowledge Distillation", "type": "Concept", "desc": "Core FYP technique: train MobileNetV3 student to mimic EfficientNet-B3 teacher soft outputs"}, {"id": "Distillation Loss", "type": "Concept", "desc": "KL-divergence + cross-entropy blend (temperature=4, alpha=0.7)"}, {"id": "Grad-CAM", "type": "Concept", "desc": "Technique to visually compare teacher vs. distilled student learned attention"}, {"id": "Western/lighter-skin datasets", "type": "Decision", "desc": "Ayan declined to add more Western datasets, citing skin-tone bias risk"}, {"id": "Eczema/Psoriasis/Contact Dermatitis confusion", "type": "Concept", "desc": ""}, {"id": "MobileNetV3-Small (Distilled)", "type": "Model", "desc": "Student distilled from EfficientNet-B3 teacher, 1.08M params, 67% test accuracy"}, {"id": "MobileNetV3-Large (Distilled)", "type": "Model", "desc": "Student distilled from teacher, 3.4M params, 71% test accuracy - matches teacher, became production model"}, {"id": "DualTransformDataset", "type": "File", "desc": "Custom PyTorch Dataset returning both 224px (student) and 300px (teacher) transforms per image"}, {"id": "Model A", "type": "Concept", "desc": "Full brain-mapped architecture: thalamic gating, k-WTA, predictive coding, hippocampal memory, top-down feedback"}, {"id": "Model B", "type": "Concept", "desc": "Stripped hypothesis: only prediction error propagates between layers, computation scales with surprise"}, {"id": "PredictiveLayer", "type": "File", "desc": "PyTorch module implementing encode-predict-error-surprise-gate per layer"}, {"id": "KWinnersTakeAll", "type": "File", "desc": "k-WTA sparsity module (top ~10% activations survive), biological lateral-inhibition analogue"}, {"id": "Brain-AI Hybrid Paradigm", "type": "Decision", "desc": "Ayan's research goal: combine brain efficiency principles with AI's parallelism/precision"}, {"id": "context.md (research)", "type": "File", "desc": "Context doc generated to seed a separate chat continuing Model A/B research"}, {"id": "PWA Deployment Decision", "type": "Decision", "desc": "Dropped Flutter/native app in favor of browser-based Progressive Web App"}, {"id": "ONNX Runtime Web", "type": "Software", "desc": "Browser-based inference engine for offline mode after model download"}, {"id": "Service Worker Caching", "type": "Concept", "desc": "Caches webpage + model for offline-after-first-load functionality"}, {"id": "FastAPI Backend", "type": "Software", "desc": "Python service (port 5001) serving CNN inference + GradCAM"}, {"id": "Express/Node.js Backend", "type": "Software", "desc": "Port 5000, handles auth (JWT), DB, routing"}, {"id": "Ibrahim Biabani", "type": "Person", "desc": "Teammate who built the frontend (FYP-SkinSense-UI repo)"}, {"id": "Usman", "type": "Person", "desc": "Teammate involved in presentation slides/timeline"}, {"id": "FYP-SkinSense-UI", "type": "Project", "desc": "Ibrahim's original frontend repo, later merged into AI-Optimization-for-Low-Resource-Devices"}, {"id": "Git LFS", "type": "Software", "desc": "Used to track and push large .pth model checkpoints to GitHub"}, {"id": "FYP1-MidReport-S26-058-D-SkinSense.pdf", "type": "File", "desc": "Mid-evaluation report; scored Presentation 20.8, Report 13.6, Total 34.4"}, {"id": "Committee/Panel Feedback", "type": "Milestone", "desc": "Criticized incorrect layered architecture, missing justification, unreadable diagrams, weak use cases"}, {"id": "Layered (N-Tier) Architecture", "type": "Decision", "desc": "Chosen architecture pattern, justified over 5 alternatives"}, {"id": "Old Architecture Diagram", "type": "Decision", "desc": "Original diagram mixing physical deployment with logical layers - rejected by committee"}, {"id": "Logical Layered Architecture Diagram", "type": "File", "desc": "Corrected 5-layer diagram separating Presentation/API/Business Logic/Data"}, {"id": "Deployment/Mode Diagram", "type": "File", "desc": "Second diagram showing online vs offline mode flows separately"}, {"id": "Use Cases (UC-01 to UC-08)", "type": "Decision", "desc": "Revised use case set"}, {"id": "Non-Functional Requirements (19 NFRs)", "type": "Decision", "desc": "Rewritten measurable NFRs across Performance/Reliability/Usability/Security"}, {"id": "Final Report LaTeX (main.tex)", "type": "File", "desc": "Full FYP final report written in LaTeX for Overleaf"}, {"id": "TikZ Diagrams", "type": "File", "desc": "Native LaTeX-drawn use case and architecture diagrams"}, {"id": "PostgreSQL (local + cloud sync)", "type": "Software", "desc": "Dual-database plan: local DB syncs to central cloud DB"}, {"id": "JWT Auth", "type": "Concept", "desc": "Session/authentication mechanism, 30-min inactivity expiry"}, {"id": "Whisper ASR (custom)", "type": "Model", "desc": "Custom OpenAI Whisper v3 turbo large from HuggingFace, Urdu/English"}, {"id": "Map API / Clinic Finder", "type": "Software", "desc": "Locates nearest clinics with relevant specialists"}, {"id": "SkinSense_Test_Success_Report", "type": "File", "desc": "QA report showing 188/188 tests passing"}, {"id": "Class Diagram / ERD / Activity / Sequence Diagrams", "type": "File", "desc": "Supporting UML diagrams, partially updated for final report"}, {"id": "Research Ladder (FYP to Masters to PhD)", "type": "Concept", "desc": ""}, {"id": "Overleaf", "type": "Concept", "desc": "LaTeX compilation platform used for Final Report"}, {"id": "FYP", "type": "Milestone", "desc": "Final Year Project deadline driving the overall research/coursework tradeoff"}, {"id": "NEXUS", "type": "Project", "desc": "Ayan's Software Engineering course project"}, {"id": "Core Research Hypothesis", "type": "Decision", "desc": "\"Maximize performance, learning efficiency, and compute on no energy budget\""}, {"id": "Hebbian Learning", "type": "Concept", "desc": "\"Neurons that fire together wire together\" - synaptic strengthening via co-activation"}, {"id": "Synapse", "type": "Concept", "desc": "Connection between neurons; strength encodes association weight"}, {"id": "Neuron", "type": "Concept", "desc": "Basic computational/decision unit of the brain"}, {"id": "Neuroplasticity", "type": "Concept", "desc": "Ability of synapses to strengthen/weaken with experience"}, {"id": "Synaptic Pruning", "type": "Concept", "desc": "Active removal of unused/weak synapses, mostly during sleep"}, {"id": "Predictive Coding", "type": "Concept", "desc": "Brain predicts next input; only prediction error (surprise) propagates/drives learning"}, {"id": "Sparse Coding", "type": "Concept", "desc": "Only ~5% of neurons active at any time in the brain"}, {"id": "Cross-Modal Association", "type": "Concept", "desc": "Different sensory categories trigger each other via convergence zones"}, {"id": "Convergence Zone", "type": "Concept", "desc": "Brain hub where multiple sensory categories integrate into unified concepts"}, {"id": "Reconsolidation", "type": "Concept", "desc": "New associations compete with (not erase) old ones during memory update"}, {"id": "Hormonal Flooding", "type": "Concept", "desc": "Emotional/hormonal intensity acts as a multiplier on association/memory strength"}, {"id": "Spaced Repetition", "type": "Concept", "desc": "Distributed retrieval over time strengthens long-term recall vs. massed repetition"}, {"id": "Storage vs Retrieval Strength", "type": "Concept", "desc": "Distinction between how \"burned in\" a memory is vs. how easily it's accessible"}, {"id": "Dopamine", "type": "Concept", "desc": "Neuromodulator encoding prediction-error magnitude/reward; substantia nigra & VTA"}, {"id": "Serotonin", "type": "Concept", "desc": "Neuromodulator encoding confidence/environmental stability; raphe nuclei"}, {"id": "Acetylcholine", "type": "Concept", "desc": "Neuromodulator encoding attention/importance/learning-rate modulation"}, {"id": "Norepinephrine", "type": "Concept", "desc": "Neuromodulator encoding novelty/urgency/arousal; locus coeruleus"}, {"id": "Cortisol", "type": "Concept", "desc": "Stress hormone affecting memory consolidation under threat"}, {"id": "Thalamus", "type": "Concept", "desc": "Brain's sensory routing/gating hub; filters what reaches cortex, no central overseer"}, {"id": "Cerebellum", "type": "Concept", "desc": "Parallel real-time predictive motor-correction module"}, {"id": "Hypothalamus", "type": "Concept", "desc": "Controls hormone release; interface between nervous system and endocrine system"}, {"id": "Amygdala", "type": "Concept", "desc": "Emotional/threat tagging; triggers hormonal flooding that weights memory importance"}, {"id": "Hippocampus", "type": "Concept", "desc": "Memory consolidation, contextual encoding, prevents catastrophic forgetting"}, {"id": "Basal Ganglia", "type": "Concept", "desc": "Learned reward-based action selection (go/no-go decisions)"}, {"id": "Cingulate Cortex (ACC)", "type": "Concept", "desc": "Error detection and conflict monitoring; origin of global error/dopamine broadcast analog"}, {"id": "Cerebral Cortex", "type": "Concept", "desc": "Frontal/parietal/temporal/occipital lobes; specialized processing layers"}, {"id": "Glial Cells / Astrocytes", "type": "Concept", "desc": "Non-neuron cells modulating synapse strength; often ignored in AI models"}, {"id": "Oscillatory Rhythms (Gamma)", "type": "Concept", "desc": "Neural synchrony solving the \"binding problem\" across regions"}, {"id": "Default Mode Network", "type": "Concept", "desc": "Idle-state background consolidation/integration network"}, {"id": "Neural Architecture Design Space", "type": "Concept", "desc": "Framework of dimensions for novel architecture design"}, {"id": "Semantic Layer Routing (Hypothesis 1)", "type": "Decision", "desc": "Hard-coded category-based layer routing; rejected"}, {"id": "Overseer / Brain-within-a-Brain (Hypothesis 2)", "type": "Decision", "desc": "Centralized meta-layer reviewing routing decisions; rejected"}, {"id": "Distributed Gating + Centralized Validation (Hypothesis 3)", "type": "Decision", "desc": "Per-layer meta-brains + validating overseer; rejected"}, {"id": "Warm-Up Phase Bootstrapping (Hypothesis 4)", "type": "Decision", "desc": "All layers compute during early training; retained"}, {"id": "Activation-Magnitude Routing (Hypothesis 5)", "type": "Decision", "desc": "Route based on layer's own activation strength; superseded"}, {"id": "One Global Gate (Hypothesis 6)", "type": "Decision", "desc": "Single centralized gate broadcasting per-layer activation; rejected"}, {"id": "Local Prediction Errors (Hypothesis 7)", "type": "Decision", "desc": "Each layer predicts its forward signal; mismatch computed locally - retained"}, {"id": "Global Dopamine + Local Errors (Model 1)", "type": "Decision", "desc": "Local prediction errors modulated by one global dopamine-like scalar"}, {"id": "Dead Layer Problem (Hypothesis 9)", "type": "Decision", "desc": "Silent/opted-out layers get no gradient and never learn to reactivate"}, {"id": "Model 2a (2 neuromodulators)", "type": "Decision", "desc": "Dopamine + serotonin variant"}, {"id": "Model 2b (4 neuromodulators)", "type": "Decision", "desc": "Dopamine + serotonin + acetylcholine + norepinephrine; hypothesized sweet spot"}, {"id": "Model 2c (6 neuromodulators)", "type": "Decision", "desc": "Adds cortisol + endorphins; hypothesized to add noise without benefit"}, {"id": "Blue Brain Project", "type": "Project", "desc": "Prior art - biologically realistic neuron/connectome simulation"}, {"id": "BrainCog", "type": "Project", "desc": "Prior art - spiking neural network brain-inspired cognitive engine"}, {"id": "Full Functional Brain Catalog", "type": "Decision", "desc": "Ayan's plan to document all brain systems/mechanisms first"}, {"id": "Ablation Study Plan", "type": "Decision", "desc": "Claude's counter-proposal: minimal 5-principle model then ablate one at a time"}, {"id": "4-Week LLM Learning Path", "type": "Decision", "desc": "Structured plan for understanding transformers deeply"}, {"id": "Mamba / State Space Models", "type": "Concept", "desc": "Alternative linear-time sequence modeling architecture"}, {"id": "Spiking Neural Networks", "type": "Concept", "desc": "Brain-inspired energy-efficient computation paradigm, hard to train"}, {"id": "Learning rate / gradient magnitude (AI concept)", "type": "Concept", "desc": ""}, {"id": "Embedding proximity / attention weights (AI concept)", "type": "Concept", "desc": ""}, {"id": "parameter duplication", "type": "Concept", "desc": ""}, {"id": "still requires centralized coordinator", "type": "Concept", "desc": ""}, {"id": "real-time parallel correction", "type": "Concept", "desc": ""}, {"id": "memory consolidation", "type": "Concept", "desc": ""}, {"id": "importance-tagging", "type": "Concept", "desc": ""}, {"id": "learned opt-in/opt-out routing decision", "type": "Concept", "desc": ""}, {"id": "global error detection signal", "type": "Concept", "desc": ""}, {"id": "specialized processing layers", "type": "Concept", "desc": ""}, {"id": "missing consideration in AI models", "type": "Concept", "desc": ""}, {"id": "binding problem (cross-region feature integration)", "type": "Concept", "desc": ""}, {"id": "background consolidation", "type": "Concept", "desc": ""}, {"id": "DINOv3", "type": "Model", "desc": "Meta vision foundation model recommended as stronger teacher option (ViT-L/14 ~300M params)"}, {"id": "CLIP", "type": "Model", "desc": "OpenAI multimodal model; panel-mandated integration for symptom-image correlation"}, {"id": "Structured Pruning", "type": "Concept", "desc": "Compression technique removing channels/filters for real mobile speedup"}, {"id": "Magnitude Pruning", "type": "Concept", "desc": "Unstructured pruning technique, hard to accelerate on mobile"}, {"id": "Deep Compression Paper", "type": "Concept", "desc": "Han, Mao, Dally 2015 - pruning+quantization+Huffman coding, 35x compression"}, {"id": "Lottery Ticket Hypothesis", "type": "Concept", "desc": "Frankle & Carbin 2018 - winning subnetworks inside dense nets"}, {"id": "C/C++ Learning Plan", "type": "Decision", "desc": "20-week plan (C then C++) to build low-level performance intuition"}, {"id": "No-AI/No-Paste Rule", "type": "Decision", "desc": "Ayan types every character himself when practicing coding"}, {"id": "Computer Architecture Study", "type": "Concept", "desc": "Caches, pipelining, branch prediction"}, {"id": "ARM NEON", "type": "Concept", "desc": "ARM SIMD instruction set, relevant if hand-writing custom inference kernels"}, {"id": "Compiler Explorer / godbolt.org", "type": "Software", "desc": "Tool for reading compiled assembly output"}, {"id": "ONNX Runtime", "type": "Software", "desc": "Inference engine used for SkinSense deployment"}, {"id": "95%-on-100%-of-tests Target", "type": "Decision", "desc": "Ayan's initially proposed accuracy target, rejected by Claude as incoherent"}, {"id": "80% Accuracy Target", "type": "Decision", "desc": "Final agreed realistic accuracy target for FYP2"}, {"id": "Mid Evaluation", "type": "Milestone", "desc": "May 12, 2026 panel review - flagged architecture, NFRs, diagrams, timeline issues"}, {"id": "Iteration 1 Final Evaluation", "type": "Milestone", "desc": "Aug 31, 2026 panel review - flagged CLIP, model justification, OOD classes, generalization testing"}, {"id": "Final Report (FYP1)", "type": "File", "desc": "72-page LaTeX report rebuilt to match Mid Report formatting"}, {"id": "Testing Chapter (Ch. 5)", "type": "File", "desc": "27-28 page detailed testing chapter, 188/188 tests"}, {"id": "ML Pipeline Chapter (Ch. 4)", "type": "File", "desc": "New report chapter documenting dataset curation, model iterations, distillation results"}, {"id": "Option A (CLIP distillation teacher)", "type": "Decision", "desc": "CLIP used only at training time as auxiliary loss signal, zero inference cost"}, {"id": "Option B (CLIP text-fusion)", "type": "Decision", "desc": "CLIP text encoder fused with MobileNetV3 image output at inference"}, {"id": "Option C (CLIP online secondary opinion)", "type": "Decision", "desc": "Full CLIP run server-side only in online mode as secondary opinion"}, {"id": "/predict_online endpoint", "type": "File", "desc": "Planned new server.py endpoint combining MobileNetV3 + CLIP zero-shot + symptom text"}, {"id": "inference/server.py", "type": "File", "desc": "Python inference service"}, {"id": "feature/clip-distillation-teacher", "type": "File", "desc": "Git branch for Option A"}, {"id": "feature/clip-text-fusion", "type": "File", "desc": "Git branch for Option B"}, {"id": "feature/clip-online-secondary-opinion", "type": "File", "desc": "Git branch for Option C, prioritized first"}, {"id": "CachyOS", "type": "Software", "desc": "Ayan's reinstalled Linux OS on laptop"}, {"id": "Publishable Paper Goal", "type": "Decision", "desc": "Ayan's goal to publish a workshop paper by FYP semester 2"}, {"id": "Brain-Inspired Research Track", "type": "Decision", "desc": "Separate research thread (Model A/B, predictive coding) parked for a dedicated block"}, {"id": "Gate Collapse", "type": "Concept", "desc": ""}, {"id": "Label Noise", "type": "Concept", "desc": ""}, {"id": "Confidence Threshold OOD", "type": "Concept", "desc": ""}, {"id": "Model Justification", "type": "Concept", "desc": ""}, {"id": "Generalization Testing", "type": "Concept", "desc": ""}, {"id": "Multilingual Mismatch", "type": "Concept", "desc": ""}], "edges": [{"source": "Ayan", "rel": "owns", "target": "SkinSense", "ctx": "FYP project on DermAI for edge devices"}, {"source": "Ayan", "rel": "owns", "target": "Grounded", "ctx": "separate productivity app project"}, {"source": "Ayan", "rel": "uses", "target": "RTX 4060", "ctx": "primary GPU for local model training"}, {"source": "SkinSense", "rel": "targets hardware", "target": "Low-resource rural devices", "ctx": "2-4GB RAM phones"}, {"source": "SkinSense", "rel": "trains on", "target": "PyTorch", "ctx": "via WSL2/dermai env, CUDA-accelerated"}, {"source": "SkinSense", "rel": "deploys via", "target": "TensorFlow Lite", "ctx": "planned mobile export format"}, {"source": "SkinSense", "rel": "wraps model in", "target": "Flutter", "ctx": "planned mobile app framework (early plan)"}, {"source": "SkinSense", "rel": "uses backbone", "target": "MobileNetV3", "ctx": "transfer learning from ImageNet pretrained weights"}, {"source": "SkinSense", "rel": "applies", "target": "Quantization", "ctx": "for shrinking model size for mobile"}, {"source": "SkinSense", "rel": "targets", "target": "Target Conditions (7-class)", "ctx": "Vitiligo, Melasma, Psoriasis, Eczema, Tinea, Contact Dermatitis, Seborrheic Dermatitis"}, {"source": "SkinSense", "rel": "sources data from", "target": "SCIN", "ctx": "889 images after filtering/merge fix"}, {"source": "SkinSense", "rel": "sources data from", "target": "SkinDisNet", "ctx": "1297 images after filtering"}, {"source": "SkinSense", "rel": "sources data from", "target": "DermaCon-IN", "ctx": "2688 images after filtering, richest source"}, {"source": "Ayan", "rel": "mistakenly downloaded", "target": "HAM10000", "ctx": "instead of intended DermaCon-IN, corrected later"}, {"source": "SCIN", "rel": "combined into", "target": "master_dataset.csv", "ctx": "with SkinDisNet + DermaCon-IN, 4874 total images"}, {"source": "SkinDisNet", "rel": "combined into", "target": "master_dataset.csv", "ctx": ""}, {"source": "DermaCon-IN", "rel": "combined into", "target": "master_dataset.csv", "ctx": ""}, {"source": "Class Imbalance", "rel": "affects", "target": "Target Conditions (7-class)", "ctx": "Melasma (85) and Seborrheic Dermatitis (146) weakest"}, {"source": "Ayan", "rel": "decided to handle via augmentation", "target": "Class Imbalance", "ctx": "chose augmentation over dropping/merging classes"}, {"source": "DermaCon-IN", "rel": "suggests", "target": "Two-Stage Classification Idea", "ctx": "via its Main_class/Sub_class hierarchy"}, {"source": "dermai (conda env)", "rel": "contains", "target": "PyTorch", "ctx": "installed with CUDA 12.6 wheel"}, {"source": "dermai (conda env)", "rel": "verified against", "target": "RTX 4060", "ctx": "torch.cuda.is_available() == True"}, {"source": "WSL2/Ubuntu", "rel": "hosts", "target": "Miniconda", "ctx": "installed separately from Windows-side install"}, {"source": "Miniconda", "rel": "creates", "target": "dermai (conda env)", "ctx": "for FYP/SkinSense"}, {"source": "Miniconda", "rel": "creates", "target": "grounded (conda env)", "ctx": "for Grounded app"}, {"source": "Flutter", "rel": "requires", "target": "Android Studio", "ctx": "for Android SDK + cmdline-tools"}, {"source": "Flutter", "rel": "installed on", "target": "Windows 11 Pro", "ctx": "not WSL, emulator/USB debugging need Windows side"}, {"source": "Ayan", "rel": "pushes code to", "target": "AI-Optimization-for-Low-Resource-Devices", "ctx": "GitHub repo, required PAT after password-auth removal"}, {"source": "Ayan", "rel": "reseated", "target": "Corsair Vengeance RAM", "ctx": "did not fix top-speed crashes"}, {"source": "Corsair Vengeance RAM", "rel": "unstable under", "target": "XMP profile", "ctx": "crashes specifically at top speed"}, {"source": "ASRock B550M Pro SE", "rel": "provides", "target": "BIOS settings", "ctx": "XMP, Resizable BAR, Above 4G Decoding enabled"}, {"source": "Grounded", "rel": "targets platforms", "target": "Flutter", "ctx": "Android + iOS via Flutter cross-platform"}, {"source": "01_data_exploration.ipynb", "rel": "precedes", "target": "02_data_preprocessing.ipynb", "ctx": "pipeline order"}, {"source": "02_data_preprocessing.ipynb", "rel": "precedes", "target": "03_model_training.ipynb", "ctx": "pipeline order"}, {"source": "ISIC Archive", "rel": "superseded by", "target": "SCIN", "ctx": "switched to condition-targeted datasets"}, {"source": "Ms. Azka Atiq", "rel": "advises", "target": "SkinSense", "ctx": "FYP supervisor, dataset sourcing guidance"}, {"source": "Dr. Ahmad Raza", "rel": "advises", "target": "SkinSense", "ctx": "FYP supervisor, dataset sourcing guidance"}, {"source": "Ayan", "rel": "trains models on", "target": "RTX 4060", "ctx": ""}, {"source": "Ayan", "rel": "works in", "target": "WSL2/Ubuntu", "ctx": ""}, {"source": "DermNet", "rel": "supplements", "target": "Psoriasis", "ctx": "141 filtered images added"}, {"source": "DermNet", "rel": "supplements", "target": "Seborrheic Dermatitis", "ctx": "25 images added"}, {"source": "DermNet", "rel": "supplements", "target": "Contact Dermatitis", "ctx": "27 filtered images added"}, {"source": "DermNet", "rel": "supplements", "target": "Vitiligo", "ctx": "16 images added"}, {"source": "DermNet", "rel": "supplements", "target": "Melasma", "ctx": "8 images added"}, {"source": "DermNet", "rel": "supplements", "target": "Eczema", "ctx": "309+123 images added"}, {"source": "SkinDiseaseImage", "rel": "supplements", "target": "Psoriasis", "ctx": "2055 images added, largest single boost"}, {"source": "SkinDiseaseImage", "rel": "supplements", "target": "Eczema", "ctx": "1677+1257 images added"}, {"source": "Claude", "rel": "recommended", "target": "Stratified random split", "ctx": "over k-fold cross-validation, for FYP time constraints"}, {"source": "master_dataset.csv", "rel": "split via", "target": "Stratified random split", "ctx": ""}, {"source": "SkinDataset (class)", "rel": "feeds", "target": "MobileNetV3-Small", "ctx": "via DataLoader batching"}, {"source": "Class weighting (CrossEntropyLoss)", "rel": "counters imbalance in", "target": "master_dataset.csv", "ctx": ""}, {"source": "MobileNetV3-Small", "rel": "trained in", "target": "Phase 1 training (frozen backbone)", "ctx": ""}, {"source": "Phase 1 training (frozen backbone)", "rel": "improved by", "target": "Phase 2 training (fine-tuned)", "ctx": ""}, {"source": "Phase 2 training (fine-tuned)", "rel": "saved to", "target": "best_model_finetuned.pth", "ctx": ""}, {"source": "Phase 2 training (fine-tuned)", "rel": "evaluated via", "target": "confusion_matrix.png", "ctx": ""}, {"source": "confusion_matrix.png", "rel": "revealed", "target": "Eczema/Psoriasis/Contact Dermatitis confusion", "ctx": ""}, {"source": "Ayan", "rel": "requested", "target": "DermNet", "ctx": "augmentation datasets to fix Psoriasis/SebDerm/Contact Dermatitis weakness"}, {"source": "Claude", "rel": "sourced", "target": "DermNet", "ctx": "via Kaggle search"}, {"source": "Claude", "rel": "sourced", "target": "SkinDiseaseImage", "ctx": "via Kaggle search"}, {"source": "MobileNetV3-Small", "rel": "retrained on augmented data", "target": "MobileNetV3 augmented retrain", "ctx": "59% test accuracy"}, {"source": "Weighted sampling", "rel": "replaces", "target": "Class weighting (CrossEntropyLoss)", "ctx": "after sampler+loss-weight conflict"}, {"source": "Claude", "rel": "proposed", "target": "Knowledge Distillation", "ctx": "heavy teacher (B4/B3) -> lightweight MobileNetV3 student"}, {"source": "Claude", "rel": "recommended", "target": "EfficientNet-B3 (Teacher)", "ctx": "over EfficientNet-B4/B7 for dataset-size/overfitting tradeoff"}, {"source": "Ayan", "rel": "declined", "target": "Western/lighter-skin datasets", "ctx": "to avoid skin-tone bias vs target population"}, {"source": "EfficientNet-B3 (Teacher)", "rel": "trained as teacher, caused", "target": "BatchNorm instability", "ctx": "frozen-backbone attempt, val loss unstable"}, {"source": "Selective unfreezing (Teacher v3)", "rel": "attempted fix for", "target": "BatchNorm instability", "ctx": "failed, only 41% val acc"}, {"source": "EfficientNet-B3 (Teacher)", "rel": "saved to", "target": "teacher_best.pth", "ctx": ""}, {"source": "EfficientNet-B3 (Teacher)", "rel": "outperforms", "target": "MobileNetV3 augmented retrain", "ctx": "71% vs 59% test accuracy"}, {"source": "EfficientNet-B3 (Teacher)", "rel": "distilled into", "target": "MobileNetV3-Small", "ctx": "via Knowledge Distillation"}, {"source": "Distillation Loss", "rel": "combines", "target": "EfficientNet-B3 (Teacher)", "ctx": "temperature=4, alpha=0.7"}, {"source": "Knowledge Distillation", "rel": "to be evaluated with", "target": "Grad-CAM", "ctx": "planned teacher-vs-student visual reasoning comparison"}, {"source": "Claude", "rel": "pushed to GitHub", "target": "EfficientNet-B3 (Teacher)", "ctx": "commit \"teacher EfficientNet-B3 trained - 71% test accuracy\""}, {"source": "Distillation Loss", "rel": "trains", "target": "MobileNetV3-Small (Distilled)", "ctx": "KL(T=4)+CE(alpha=0.7)"}, {"source": "Distillation Loss", "rel": "trains", "target": "MobileNetV3-Large (Distilled)", "ctx": ""}, {"source": "EfficientNet-B3 (Teacher)", "rel": "supervises (frozen, eval mode)", "target": "MobileNetV3-Small (Distilled)", "ctx": ""}, {"source": "EfficientNet-B3 (Teacher)", "rel": "supervises (frozen, eval mode)", "target": "MobileNetV3-Large (Distilled)", "ctx": ""}, {"source": "DualTransformDataset", "rel": "feeds", "target": "Distillation Loss", "ctx": "supplies paired 224px/300px images per batch"}, {"source": "MobileNetV3-Large (Distilled)", "rel": "matches accuracy of", "target": "EfficientNet-B3 (Teacher)", "ctx": "71% vs 71%, at 30% of parameters"}, {"source": "MobileNetV3-Large (Distilled)", "rel": "becomes", "target": "SkinSense", "ctx": "production inference model"}, {"source": "Ayan", "rel": "proposes", "target": "Model A", "ctx": ""}, {"source": "Ayan", "rel": "proposes", "target": "Model B", "ctx": ""}, {"source": "Claude", "rel": "designed", "target": "PredictiveLayer", "ctx": "core building block of Model B"}, {"source": "Claude", "rel": "designed", "target": "KWinnersTakeAll", "ctx": "sparsity component discussed for Model A/B"}, {"source": "Model B", "rel": "is purer hypothesis than", "target": "Model A", "ctx": ""}, {"source": "Model A", "rel": "incorporates", "target": "KWinnersTakeAll", "ctx": ""}, {"source": "Model A", "rel": "incorporates", "target": "PredictiveLayer", "ctx": ""}, {"source": "Ayan", "rel": "reframes goal as", "target": "Brain-AI Hybrid Paradigm", "ctx": ""}, {"source": "Brain-AI Hybrid Paradigm", "rel": "generates", "target": "Research Ladder (FYP to Masters to PhD)", "ctx": ""}, {"source": "Research Ladder (FYP to Masters to PhD)", "rel": "starts with", "target": "SkinSense", "ctx": "skin classifier as Step 1 proof of concept"}, {"source": "Ayan", "rel": "requested", "target": "context.md (research)", "ctx": "to move brain-research discussion to a separate chat"}, {"source": "context.md (research)", "rel": "seeds", "target": "Model A", "ctx": "continued in new chat"}, {"source": "context.md (research)", "rel": "seeds", "target": "Model B", "ctx": ""}, {"source": "Ayan", "rel": "rejects", "target": "Flutter", "ctx": "citing rural RAM/storage constraints"}, {"source": "Ayan", "rel": "decides", "target": "PWA Deployment Decision", "ctx": ""}, {"source": "PWA Deployment Decision", "rel": "replaces", "target": "Flutter", "ctx": ""}, {"source": "PWA Deployment Decision", "rel": "relies on", "target": "ONNX Runtime Web", "ctx": "offline in-browser inference"}, {"source": "PWA Deployment Decision", "rel": "relies on", "target": "Service Worker Caching", "ctx": ""}, {"source": "SkinSense", "rel": "served online by", "target": "FastAPI Backend", "ctx": ""}, {"source": "SkinSense", "rel": "served online by", "target": "Express/Node.js Backend", "ctx": ""}, {"source": "Express/Node.js Backend", "rel": "calls internally", "target": "FastAPI Backend", "ctx": "frontend never talks to FastAPI directly"}, {"source": "Express/Node.js Backend", "rel": "handles", "target": "JWT Auth", "ctx": ""}, {"source": "FastAPI Backend", "rel": "runs", "target": "Grad-CAM", "ctx": ""}, {"source": "FastAPI Backend", "rel": "runs", "target": "Whisper ASR (custom)", "ctx": ""}, {"source": "Ibrahim Biabani", "rel": "built", "target": "FYP-SkinSense-UI", "ctx": ""}, {"source": "FYP-SkinSense-UI", "rel": "merged into", "target": "AI-Optimization-for-Low-Resource-Devices", "ctx": "August 22, 2026"}, {"source": "Ayan", "rel": "pushes models via", "target": "Git LFS", "ctx": ".pth checkpoints too large for plain git"}, {"source": "SkinSense", "rel": "trained on", "target": "DermaCon-IN", "ctx": ""}, {"source": "SkinSense", "rel": "trained on", "target": "SCIN", "ctx": ""}, {"source": "SkinSense", "rel": "trained on", "target": "SkinDisNet", "ctx": ""}, {"source": "SkinSense", "rel": "trained on", "target": "DermNet", "ctx": ""}, {"source": "SkinSense", "rel": "trained on", "target": "SkinDiseaseImage", "ctx": ""}, {"source": "Committee/Panel Feedback", "rel": "criticizes", "target": "Old Architecture Diagram", "ctx": "mixed physical deployment with logical layers"}, {"source": "Committee/Panel Feedback", "rel": "criticizes", "target": "Use Cases (UC-01 to UC-08)", "ctx": "System-actor inference UC, redundant UC-07/08"}, {"source": "Committee/Panel Feedback", "rel": "criticizes", "target": "Non-Functional Requirements (19 NFRs)", "ctx": "originally vague/unmeasurable"}, {"source": "Committee/Panel Feedback", "rel": "criticizes", "target": "FYP1-MidReport-S26-058-D-SkinSense.pdf", "ctx": "thin introduction, weak problem statement"}, {"source": "Claude", "rel": "redesigns", "target": "Logical Layered Architecture Diagram", "ctx": "replacing Old Architecture Diagram"}, {"source": "Claude", "rel": "redesigns", "target": "Deployment/Mode Diagram", "ctx": ""}, {"source": "Claude", "rel": "justifies", "target": "Layered (N-Tier) Architecture", "ctx": "vs Microservices, Event-Driven, Client-Server, Hexagonal, MVC"}, {"source": "Ayan", "rel": "selects", "target": "Layered (N-Tier) Architecture", "ctx": "for SkinSense final report"}, {"source": "Claude", "rel": "rewrites", "target": "Non-Functional Requirements (19 NFRs)", "ctx": "measurable targets per category"}, {"source": "Claude", "rel": "rewrites", "target": "Use Cases (UC-01 to UC-08)", "ctx": "merges UC-07/08, fixes UC-04 actor"}, {"source": "Claude", "rel": "drafts", "target": "Final Report LaTeX (main.tex)", "ctx": "1,053+ lines, NUCES template, Overleaf-ready"}, {"source": "Final Report LaTeX (main.tex)", "rel": "embeds", "target": "TikZ Diagrams", "ctx": "replacing screenshot figures"}, {"source": "TikZ Diagrams", "rel": "render", "target": "Use Cases (UC-01 to UC-08)", "ctx": "as use case diagram"}, {"source": "TikZ Diagrams", "rel": "render", "target": "Logical Layered Architecture Diagram", "ctx": ""}, {"source": "Final Report LaTeX (main.tex)", "rel": "cites", "target": "SkinSense_Test_Success_Report", "ctx": "188/188 tests"}, {"source": "SkinSense", "rel": "stores data in", "target": "PostgreSQL (local + cloud sync)", "ctx": ""}, {"source": "SkinSense", "rel": "uses", "target": "JWT Auth", "ctx": ""}, {"source": "SkinSense", "rel": "uses", "target": "Map API / Clinic Finder", "ctx": ""}, {"source": "Claude", "rel": "updates", "target": "Class Diagram / ERD / Activity / Sequence Diagrams", "ctx": "\"Edge Device\" to \"FastAPI (Inference)\" renaming"}, {"source": "Ms. Azka Atiq", "rel": "validates", "target": "SkinSense", "ctx": "domain expert consultation"}, {"source": "Dr. Ahmad Raza", "rel": "validates", "target": "SkinSense", "ctx": "domain expert consultation"}, {"source": "Usman", "rel": "works on", "target": "Committee/Panel Feedback", "ctx": "presentation slides/timeline fixes"}, {"source": "Ayan", "rel": "uses", "target": "Overleaf", "ctx": "to compile Final Report LaTeX (main.tex)"}, {"source": "Ayan", "rel": "proposes as testbed", "target": "SkinSense", "ctx": "reframed from \"dermatology app\" to proof-of-concept for brain-efficient AI"}, {"source": "SkinSense", "rel": "validates", "target": "Core Research Hypothesis", "ctx": "\"As efficient as the brain, as performant as best current models\""}, {"source": "Core Research Hypothesis", "rel": "generalizes beyond", "target": "SkinSense", "ctx": "intended to apply to all domains"}, {"source": "Ayan", "rel": "competes for time across", "target": "Grounded", "ctx": "assignments vs research vs coursework tradeoff"}, {"source": "Ayan", "rel": "competes for time across", "target": "NEXUS", "ctx": "same tradeoff discussion"}, {"source": "Model B", "rel": "tests", "target": "Predictive Coding", "ctx": "literally testing surprise-only/prediction-error-driven learning"}, {"source": "Model B", "rel": "plateaued due to", "target": "Dead Layer Problem (Hypothesis 9)", "ctx": "killed the gradient highway"}, {"source": "Model A", "rel": "incorporates", "target": "Thalamus", "ctx": "\"thalamic gating\" analogy"}, {"source": "Model A", "rel": "incorporates", "target": "Hippocampus", "ctx": "hippocampal memory analogy"}, {"source": "Model A", "rel": "incorporates", "target": "Predictive Coding", "ctx": ""}, {"source": "Model A", "rel": "incorporates", "target": "Sparse Coding", "ctx": "k-WTA sparsity component"}, {"source": "MobileNetV3-Large (Distilled)", "rel": "analogous to", "target": "Synaptic Pruning", "ctx": "distillation framed as AI analog of synaptic pruning"}, {"source": "Hebbian Learning", "rel": "underlies", "target": "Synapse", "ctx": "repeated co-firing strengthens synaptic connection"}, {"source": "Hormonal Flooding", "rel": "maps to", "target": "Learning rate / gradient magnitude (AI concept)", "ctx": "emotional intensity = magnitude of weight update"}, {"source": "Synaptic Pruning", "rel": "maps to", "target": "Quantization", "ctx": "brain's resource-allocation pruning maps to ML pruning/quantization"}, {"source": "Cross-Modal Association", "rel": "maps to", "target": "Embedding proximity / attention weights (AI concept)", "ctx": ""}, {"source": "Amygdala", "rel": "triggers", "target": "Hormonal Flooding", "ctx": "releases hormones marking experiences as important"}, {"source": "Hormonal Flooding", "rel": "weights", "target": "Reconsolidation", "ctx": "timing/intensity of hormones during retrieval"}, {"source": "Spaced Repetition", "rel": "strengthens", "target": "Storage vs Retrieval Strength", "ctx": ""}, {"source": "Neural Architecture Design Space", "rel": "informs", "target": "Model A", "ctx": ""}, {"source": "Neural Architecture Design Space", "rel": "informs", "target": "Model B", "ctx": ""}, {"source": "Semantic Layer Routing (Hypothesis 1)", "rel": "evolves into", "target": "Local Prediction Errors (Hypothesis 7)", "ctx": ""}, {"source": "Overseer / Brain-within-a-Brain (Hypothesis 2)", "rel": "rejected because", "target": "Thalamus", "ctx": "brain has no centralized overseer"}, {"source": "Distributed Gating + Centralized Validation (Hypothesis 3)", "rel": "rejected because", "target": "parameter duplication", "ctx": ""}, {"source": "Warm-Up Phase Bootstrapping (Hypothesis 4)", "rel": "retained in", "target": "Global Dopamine + Local Errors (Model 1)", "ctx": ""}, {"source": "One Global Gate (Hypothesis 6)", "rel": "rejected because", "target": "still requires centralized coordinator", "ctx": ""}, {"source": "Local Prediction Errors (Hypothesis 7)", "rel": "derived from", "target": "Predictive Coding", "ctx": ""}, {"source": "Local Prediction Errors (Hypothesis 7)", "rel": "combined with", "target": "Dopamine", "ctx": ""}, {"source": "Global Dopamine + Local Errors (Model 1)", "rel": "suffers from", "target": "Dead Layer Problem (Hypothesis 9)", "ctx": ""}, {"source": "Dead Layer Problem (Hypothesis 9)", "rel": "partially solved by", "target": "Model 2b (4 neuromodulators)", "ctx": "acetylcholine reactivates silent layers"}, {"source": "Model 2a (2 neuromodulators)", "rel": "extends", "target": "Global Dopamine + Local Errors (Model 1)", "ctx": "adds serotonin"}, {"source": "Model 2b (4 neuromodulators)", "rel": "extends", "target": "Model 2a (2 neuromodulators)", "ctx": "adds acetylcholine + norepinephrine"}, {"source": "Model 2c (6 neuromodulators)", "rel": "extends", "target": "Model 2b (4 neuromodulators)", "ctx": "adds cortisol + endorphins"}, {"source": "Dopamine", "rel": "originates in", "target": "Cingulate Cortex (ACC)", "ctx": "functionally mapped as origin of global error signal"}, {"source": "Dopamine", "rel": "maps to", "target": "Global Dopamine + Local Errors (Model 1)", "ctx": ""}, {"source": "Thalamus", "rel": "maps to", "target": "Semantic Layer Routing (Hypothesis 1)", "ctx": "biological solution to routing problem"}, {"source": "Cerebellum", "rel": "maps to", "target": "real-time parallel correction", "ctx": "missing component in current models"}, {"source": "Hippocampus", "rel": "maps to", "target": "memory consolidation", "ctx": "missing component, catastrophic forgetting gap"}, {"source": "Amygdala", "rel": "maps to", "target": "importance-tagging", "ctx": "decides when to release high vs low dopamine signal"}, {"source": "Basal Ganglia", "rel": "maps to", "target": "learned opt-in/opt-out routing decision", "ctx": ""}, {"source": "Cingulate Cortex (ACC)", "rel": "maps to", "target": "global error detection signal", "ctx": ""}, {"source": "Cerebral Cortex", "rel": "maps to", "target": "specialized processing layers", "ctx": "lobes = domain-specific network layers"}, {"source": "Glial Cells / Astrocytes", "rel": "flagged as", "target": "missing consideration in AI models", "ctx": ""}, {"source": "Ablation Study Plan", "rel": "proposed by", "target": "Claude", "ctx": "counter-proposal to Ayan's full-catalog-first approach"}, {"source": "Full Functional Brain Catalog", "rel": "proposed by", "target": "Ayan", "ctx": ""}, {"source": "Blue Brain Project", "rel": "demonstrates limits of", "target": "Full Functional Brain Catalog", "ctx": "20 years for one rat microcircuit"}, {"source": "BrainCog", "rel": "partially implements", "target": "Spiking Neural Networks", "ctx": ""}, {"source": "4-Week LLM Learning Path", "rel": "deprioritized in favor of", "target": "Core Research Hypothesis", "ctx": ""}, {"source": "Mamba / State Space Models", "rel": "proposed as reading for", "target": "Neural Architecture Design Space", "ctx": ""}, {"source": "Spiking Neural Networks", "rel": "proposed as reading for", "target": "Core Research Hypothesis", "ctx": ""}, {"source": "Oscillatory Rhythms (Gamma)", "rel": "solves", "target": "binding problem (cross-region feature integration)", "ctx": ""}, {"source": "Default Mode Network", "rel": "hypothesized to run", "target": "background consolidation", "ctx": ""}, {"source": "RTX 4060", "rel": "used to benchmark", "target": "Model A", "ctx": "acknowledged as not a real edge device, only a proxy"}, {"source": "Ayan", "rel": "builds", "target": "SkinSense", "ctx": "FYP project, dermatology screening for rural Pakistan"}, {"source": "SkinSense", "rel": "is proof-of-concept for", "target": "Brain-Inspired Research Track", "ctx": ""}, {"source": "Ayan", "rel": "distilled", "target": "MobileNetV3-Large (Distilled)", "ctx": "from EfficientNet-B3, 71% accuracy at 30% of teacher params"}, {"source": "EfficientNet-B3 (Teacher)", "rel": "teaches", "target": "MobileNetV3-Large (Distilled)", "ctx": "knowledge distillation"}, {"source": "Claude", "rel": "recommended", "target": "DINOv3", "ctx": "as stronger teacher option for higher baseline accuracy"}, {"source": "DINOv3", "rel": "distills into", "target": "MobileNetV3-Large (Distilled)", "ctx": "proposed compression path"}, {"source": "Knowledge Distillation", "rel": "precedes", "target": "Structured Pruning", "ctx": "compression pipeline order"}, {"source": "Structured Pruning", "rel": "precedes", "target": "Quantization", "ctx": "compression pipeline order"}, {"source": "Deep Compression Paper", "rel": "foundational for", "target": "Structured Pruning", "ctx": ""}, {"source": "Lottery Ticket Hypothesis", "rel": "explains", "target": "Magnitude Pruning", "ctx": ""}, {"source": "Ayan", "rel": "proposed", "target": "95%-on-100%-of-tests Target", "ctx": "rejected as incoherent ML framing"}, {"source": "Claude", "rel": "pushed back on", "target": "95%-on-100%-of-tests Target", "ctx": ""}, {"source": "Ayan", "rel": "negotiated down to", "target": "80% Accuracy Target", "ctx": "after rejecting 95%, 90%, 85% in sequence"}, {"source": "Model B", "rel": "belongs to", "target": "Brain-Inspired Research Track", "ctx": ""}, {"source": "Model B", "rel": "suffers from", "target": "Gate Collapse", "ctx": "reached 51% accuracy, degenerate uniform attenuation"}, {"source": "Ayan", "rel": "parked", "target": "Brain-Inspired Research Track", "ctx": "deferred 3-4 months until after SkinSense/FYP2"}, {"source": "Claude", "rel": "designed", "target": "C/C++ Learning Plan", "ctx": "20-week plan for low-level optimization intuition"}, {"source": "C/C++ Learning Plan", "rel": "incorporates", "target": "Computer Architecture Study", "ctx": ""}, {"source": "C/C++ Learning Plan", "rel": "incorporates", "target": "ARM NEON", "ctx": "only if hand-writing custom inference kernels"}, {"source": "Ayan", "rel": "adopted", "target": "No-AI/No-Paste Rule", "ctx": ""}, {"source": "Compiler Explorer / godbolt.org", "rel": "used for", "target": "Computer Architecture Study", "ctx": ""}, {"source": "SkinSense", "rel": "uses", "target": "ONNX Runtime", "ctx": ""}, {"source": "SkinSense", "rel": "uses", "target": "DermNet", "ctx": "primary training dataset, ~12K images"}, {"source": "DermNet", "rel": "has", "target": "Label Noise", "ctx": "folder-label unreliability requiring regex filtering"}, {"source": "SkinSense", "rel": "uses", "target": "Confidence Threshold OOD", "ctx": "current (naive) out-of-distribution handling"}, {"source": "Iteration 1 Final Evaluation", "rel": "flagged", "target": "CLIP", "ctx": "panel required CLIP integration for symptom-image correlation"}, {"source": "Iteration 1 Final Evaluation", "rel": "flagged", "target": "Model Justification", "ctx": "why MobileNetV3 vs alternatives"}, {"source": "Iteration 1 Final Evaluation", "rel": "flagged", "target": "Confidence Threshold OOD", "ctx": "panel wants real \"no disease\"/\"unknown\" classes"}, {"source": "Iteration 1 Final Evaluation", "rel": "flagged", "target": "Generalization Testing", "ctx": "test on datasets not used in training"}, {"source": "Mid Evaluation", "rel": "flagged", "target": "Layered (N-Tier) Architecture", "ctx": "called incorrect, needed justification/rework"}, {"source": "Mid Evaluation", "rel": "flagged", "target": "Final Report (FYP1)", "ctx": "diagrams unclear, NFRs not quantifiable, timeline missing"}, {"source": "Claude", "rel": "rebuilt", "target": "Final Report (FYP1)", "ctx": "72-page LaTeX rebuild matching Mid Report formatting"}, {"source": "Final Report (FYP1)", "rel": "includes", "target": "Testing Chapter (Ch. 5)", "ctx": ""}, {"source": "Final Report (FYP1)", "rel": "includes", "target": "ML Pipeline Chapter (Ch. 4)", "ctx": ""}, {"source": "Ayan", "rel": "reworked", "target": "Layered (N-Tier) Architecture", "ctx": "corrected to proper 5-layer design, in response to Mid Evaluation"}, {"source": "CLIP", "rel": "conflicts with", "target": "SkinSense", "ctx": "full CLIP ~150M params vs 3.4M MobileNetV3, central design tension (efficiency thesis)"}, {"source": "Claude", "rel": "proposed", "target": "Option A (CLIP distillation teacher)", "ctx": ""}, {"source": "Claude", "rel": "proposed", "target": "Option B (CLIP text-fusion)", "ctx": ""}, {"source": "Claude", "rel": "proposed", "target": "Option C (CLIP online secondary opinion)", "ctx": ""}, {"source": "Option B (CLIP text-fusion)", "rel": "risks", "target": "Multilingual Mismatch", "ctx": "CLIP text tower is English-centric"}, {"source": "Ayan", "rel": "decided to build", "target": "Option A (CLIP distillation teacher)", "ctx": "given a month of runway, build all three"}, {"source": "Ayan", "rel": "decided to build", "target": "Option B (CLIP text-fusion)", "ctx": ""}, {"source": "Ayan", "rel": "decided to build", "target": "Option C (CLIP online secondary opinion)", "ctx": "built first"}, {"source": "Claude", "rel": "sequenced build order", "target": "Option C (CLIP online secondary opinion)", "ctx": "week 1, fastest/demoable"}, {"source": "Claude", "rel": "sequenced build order", "target": "Option A (CLIP distillation teacher)", "ctx": "week 2, self-contained in notebooks"}, {"source": "Claude", "rel": "sequenced build order", "target": "Option B (CLIP text-fusion)", "ctx": "week 3, hardest"}, {"source": "Option C (CLIP online secondary opinion)", "rel": "implemented as", "target": "/predict_online endpoint", "ctx": ""}, {"source": "/predict_online endpoint", "rel": "extends", "target": "inference/server.py", "ctx": "adds CLIP zero-shot + symptom text scoring"}, {"source": "Ayan", "rel": "created", "target": "feature/clip-distillation-teacher", "ctx": "git branch for Option A"}, {"source": "Ayan", "rel": "created", "target": "feature/clip-text-fusion", "ctx": "git branch for Option B"}, {"source": "Ayan", "rel": "created", "target": "feature/clip-online-secondary-opinion", "ctx": "git branch for Option C"}, {"source": "Ayan", "rel": "reinstalled", "target": "CachyOS", "ctx": "fresh Linux install requiring new SSH/git setup"}, {"source": "Ms. Azka Atiq", "rel": "supervises", "target": "SkinSense", "ctx": ""}, {"source": "Dr. Ahmad Raza", "rel": "supervises", "target": "SkinSense", "ctx": ""}, {"source": "Ayan", "rel": "wants to publish", "target": "Publishable Paper Goal", "ctx": "targeting FYP semester 2, workshop-level venue"}, {"source": "Claude", "rel": "recommended angle for", "target": "Publishable Paper Goal", "ctx": "\"compression pipeline for dermatology\" over \"new architecture\" paper"}, {"source": "Publishable Paper Goal", "rel": "depends on", "target": "Model B", "ctx": "Ayan's initial framing wanted paper on brain-inspired architecture"}, {"source": "Whisper ASR (custom)", "rel": "feeds transcript into", "target": "SkinSense", "ctx": "ASR pipeline for Urdu/English/Roman Urdu symptom input"}, {"source": "Claude", "rel": "built", "target": "Testing Chapter (Ch. 5)", "ctx": "27-page LaTeX chapter from DetailedTesting.pdf source"}]};
+
+const GROUP_OF = {
+  "Person":"person", "Hardware":"infra", "Software":"infra", "Dataset":"dataset",
+  "Model":"model", "Concept":"concept", "Decision":"decision", "Project":"project",
+  "File":"artifact", "Milestone":"artifact"
+};
+const GROUP_META = {
+  model:    { label:"Models",         varName:"--c-model" },
+  decision: { label:"Decisions",      varName:"--c-decision" },
+  dataset:  { label:"Datasets",       varName:"--c-dataset" },
+  infra:    { label:"Infrastructure", varName:"--c-infra" },
+  person:   { label:"People",         varName:"--c-person" },
+  project:  { label:"Projects",       varName:"--c-project" },
+  concept:  { label:"Concepts",       varName:"--c-concept" },
+  artifact: { label:"Records",        varName:"--c-artifact" },
+};
+const GROUP_ORDER = ["concept","decision","artifact","infra","model","dataset","project","person"];
+
+function cssVar(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// ---- build node/link data ----
+const nodeById = new Map();
+KG.nodes.forEach(n => {
+  n.group = GROUP_OF[n.type] || "concept";
+  n.degree = 0;
+  nodeById.set(n.id, n);
+});
+const links = [];
+KG.edges.forEach(e => {
+  if (!nodeById.has(e.source) || !nodeById.has(e.target)) return;
+  links.push({ source:e.source, target:e.target, rel:e.rel, ctx:e.ctx });
+  nodeById.get(e.source).degree++;
+  nodeById.get(e.target).degree++;
+});
+const nodes = KG.nodes.filter(n => nodeById.has(n.id));
+
+// adjacency for quick neighbor lookup
+const adj = new Map();
+nodes.forEach(n => adj.set(n.id, []));
+links.forEach(l => {
+  adj.get(l.source).push({ other:l.target, rel:l.rel, dir:"out", ctx:l.ctx });
+  adj.get(l.target).push({ other:l.source, rel:l.rel, dir:"in", ctx:l.ctx });
+});
+
+document.getElementById("counts").textContent = `${nodes.length} nodes · ${links.length} edges`;
+
+// ---- group counts + chip UI ----
+const groupCounts = {};
+nodes.forEach(n => groupCounts[n.group] = (groupCounts[n.group]||0)+1);
+const activeGroups = new Set(GROUP_ORDER);
+const chipsEl = document.getElementById("chips");
+GROUP_ORDER.forEach(g => {
+  const meta = GROUP_META[g];
+  const chip = document.createElement("div");
+  chip.className = "chip";
+  chip.dataset.group = g;
+  chip.innerHTML = `<span class="dot" style="background:${cssVar(meta.varName)}"></span>${meta.label}<span class="n">${groupCounts[g]||0}</span>`;
+  chip.addEventListener("click", () => {
+    if (activeGroups.has(g)) { activeGroups.delete(g); chip.classList.add("off"); }
+    else { activeGroups.add(g); chip.classList.remove("off"); }
+    applyFilters();
+  });
+  chipsEl.appendChild(chip);
+});
+
+// ---- canvas setup ----
+const canvas = document.getElementById("stage");
+const ctx = canvas.getContext("2d");
+const main = document.querySelector("main");
+let width, height, dpr;
+function resize(){
+  dpr = Math.min(window.devicePixelRatio||1, 2);
+  width = main.clientWidth; height = main.clientHeight;
+  canvas.width = width*dpr; canvas.height = height*dpr;
+  canvas.style.width = width+"px"; canvas.style.height = height+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener("resize", resize);
+
+// ---- simulation ----
+const maxDeg = Math.max(1, ...nodes.map(n=>n.degree));
+function nodeRadius(n){
+  return 3.6 + Math.sqrt(n.degree) * 2.3;
+}
+
+const simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id(d=>d.id).distance(l => 46 + 10*Math.min(4, (nodeById.get(l.source.id||l.source).degree||1))).strength(0.28))
+  .force("charge", d3.forceManyBody().strength(-95).distanceMax(420))
+  .force("center", d3.forceCenter(0,0))
+  .force("collide", d3.forceCollide(d => nodeRadius(d)+6))
+  .alphaDecay(0.018);
+
+// transform state (pan/zoom)
+let transform = d3.zoomIdentity;
+const zoom = d3.zoom()
+  .scaleExtent([0.15, 6])
+  .on("zoom", (ev) => { transform = ev.transform; draw(); })
+  .on("start", () => canvas.classList.add("dragging"))
+  .on("end", () => canvas.classList.remove("dragging"));
+d3.select(canvas).call(zoom).on("dblclick.zoom", null);
+
+// initial view: center + slightly zoomed out
+d3.select(canvas).call(zoom.transform, d3.zoomIdentity.translate(width/2, height/2).scale(0.62));
+
+// ---- selection / hover / search state ----
+let selectedId = null;
+let hoveredId = null;
+let searchTerm = "";
+let matchedIds = null; // Set or null
+
+function neighborSet(id){
+  const s = new Set([id]);
+  (adj.get(id)||[]).forEach(e => s.add(e.other));
+  return s;
+}
+
+function nodeVisible(n){ return activeGroups.has(n.group); }
+function linkVisible(l){
+  const s = typeof l.source === "object" ? l.source : nodeById.get(l.source);
+  const t = typeof l.target === "object" ? l.target : nodeById.get(l.target);
+  return s && t && nodeVisible(s) && nodeVisible(t);
+}
+
+function draw(){
+  ctx.save();
+  ctx.clearRect(0,0,width,height);
+  ctx.translate(transform.x, transform.y);
+  ctx.scale(transform.k, transform.k);
+
+  const focusSet = selectedId ? neighborSet(selectedId) : (hoveredId ? neighborSet(hoveredId) : null);
+  const showAllLabels = transform.k > 1.7;
+  const labelDegreeThresh = transform.k > 1.1 ? 3 : 5;
+
+  // edges
+  ctx.lineWidth = 1/transform.k;
+  links.forEach(l => {
+    if (!linkVisible(l)) return;
+    const s = l.source, t = l.target;
+    const dim = matchedIds && !(matchedIds.has(s.id)&&matchedIds.has(t.id));
+    const inFocus = focusSet && focusSet.has(s.id) && focusSet.has(t.id);
+    if (focusSet && !inFocus) return; // hide unrelated edges when focused
+    ctx.strokeStyle = focusSet ? cssVar('--edge-active') : cssVar('--edge');
+    ctx.globalAlpha = dim ? 0.08 : (focusSet ? 0.85 : 0.55);
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(t.x, t.y);
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+
+  // nodes
+  nodes.forEach(n => {
+    if (!nodeVisible(n)) return;
+    const r = nodeRadius(n);
+    const dim = matchedIds && !matchedIds.has(n.id);
+    const inFocus = !focusSet || focusSet.has(n.id);
+    const color = cssVar(GROUP_META[n.group].varName);
+    ctx.globalAlpha = dim ? 0.12 : (inFocus ? 1 : 0.14);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (n.id === selectedId){
+      ctx.lineWidth = 2.4/transform.k;
+      ctx.strokeStyle = cssVar('--text-primary');
+      ctx.stroke();
+    }
+    // labels
+    if (!dim && inFocus && (showAllLabels || n.degree >= labelDegreeThresh || n.id===selectedId || n.id===hoveredId)){
+      ctx.font = `${n.id===selectedId?600:500} ${11/transform.k}px "IBM Plex Sans", sans-serif`;
+      ctx.fillStyle = cssVar('--text-primary');
+      ctx.textBaseline = "middle";
+      ctx.fillText(n.id, n.x + r + 5/transform.k, n.y);
+    }
+  });
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+simulation.on("tick", draw);
+
+// ---- pointer helpers ----
+function pointerToWorld(ev){
+  const rect = canvas.getBoundingClientRect();
+  const px = (ev.clientX ?? (ev.touches&&ev.touches[0].clientX)) - rect.left;
+  const py = (ev.clientY ?? (ev.touches&&ev.touches[0].clientY)) - rect.top;
+  return transform.invert([px,py]);
+}
+function findNodeAt(wx, wy){
+  let best=null, bestD=Infinity;
+  for (const n of nodes){
+    if (!nodeVisible(n)) continue;
+    const r = nodeRadius(n)+3;
+    const dx=n.x-wx, dy=n.y-wy, d=dx*dx+dy*dy;
+    if (d < r*r && d < bestD){ best=n; bestD=d; }
+  }
+  return best;
+}
+
+// drag
+const dragBehavior = d3.drag()
+  .subject((ev) => {
+    const [wx,wy] = pointerToWorld(ev);
+    return findNodeAt(wx,wy);
+  })
+  .on("start", (ev) => {
+    if (!ev.subject) return;
+    if (!ev.active) simulation.alphaTarget(0.25).restart();
+    ev.subject.fx = ev.subject.x; ev.subject.fy = ev.subject.y;
+  })
+  .on("drag", (ev) => {
+    if (!ev.subject) return;
+    const [wx,wy] = transform.invert([ev.x - (canvas.getBoundingClientRect().left), ev.y - (canvas.getBoundingClientRect().top)]);
+    ev.subject.fx = wx; ev.subject.fy = wy;
+  })
+  .on("end", (ev) => {
+    if (!ev.subject) return;
+    if (!ev.active) simulation.alphaTarget(0);
+    ev.subject.fx = null; ev.subject.fy = null;
+  });
+d3.select(canvas).call(dragBehavior);
+
+// hover
+const tooltip = document.getElementById("tooltip");
+canvas.addEventListener("mousemove", (ev) => {
+  const [wx,wy] = pointerToWorld(ev);
+  const n = findNodeAt(wx,wy);
+  hoveredId = n ? n.id : null;
+  canvas.style.cursor = n ? "pointer" : "grab";
+  if (n){
+    const rect = canvas.getBoundingClientRect();
+    tooltip.style.left = (ev.clientX-rect.left)+"px";
+    tooltip.style.top = (ev.clientY-rect.top)+"px";
+    tooltip.textContent = n.id;
+    tooltip.style.opacity = 1;
+  } else {
+    tooltip.style.opacity = 0;
+  }
+  draw();
+});
+canvas.addEventListener("mouseleave", () => { hoveredId=null; tooltip.style.opacity=0; draw(); });
+
+// click -> select
+let clickStart = null;
+canvas.addEventListener("pointerdown", (ev) => { clickStart = [ev.clientX, ev.clientY]; });
+canvas.addEventListener("pointerup", (ev) => {
+  if (!clickStart) return;
+  const moved = Math.hypot(ev.clientX-clickStart[0], ev.clientY-clickStart[1]);
+  clickStart = null;
+  if (moved > 4) return; // was a drag/pan
+  const [wx,wy] = pointerToWorld(ev);
+  const n = findNodeAt(wx,wy);
+  if (n) selectNode(n.id); else closePanel();
+});
+
+// ---- panel ----
+const panel = document.getElementById("panel");
+function relLabel(g){ return GROUP_META[g] ? GROUP_META[g].label.replace(/s$/,'') : g; }
+
+function selectNode(id){
+  selectedId = id;
+  const n = nodeById.get(id);
+  const color = cssVar(GROUP_META[n.group].varName);
+  const rels = (adj.get(id)||[]).slice().sort((a,b)=> a.dir===b.dir ? a.other.localeCompare(b.other) : (a.dir==='out'?-1:1));
+  const out = rels.filter(r=>r.dir==='out');
+  const inn = rels.filter(r=>r.dir==='in');
+
+  function list(items, arrow){
+    if (!items.length) return "";
+    return items.map(r => {
+      const other = nodeById.get(r.other);
+      const oc = other ? cssVar(GROUP_META[other.group].varName) : cssVar('--text-muted');
+      return `<li class="rel-item" data-id="${escapeAttr(r.other)}">
+        <span class="rel-rel">${arrow} ${escapeHtml(r.rel)}</span>
+        <span class="rel-target"><span class="dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${oc};margin-right:6px;"></span>${escapeHtml(r.other)}</span>
+        ${r.ctx ? `<span class="rel-ctx">${escapeHtml(r.ctx)}</span>` : ""}
+      </li>`;
+    }).join("");
+  }
+
+  panel.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <h2>${escapeHtml(n.id)}</h2>
+        <span class="type-badge"><span class="dot" style="background:${color}"></span>${n.type}</span>
+      </div>
+      <button class="panel-close" id="panelClose">×</button>
+    </div>
+    <div class="panel-body">
+      <p class="panel-desc">${n.desc ? escapeHtml(n.desc) : "No description extracted."}</p>
+      ${out.length ? `<div class="rel-section"><h3>Leads to (${out.length})</h3><ul class="rel-list">${list(out,'→')}</ul></div>` : ""}
+      ${inn.length ? `<div class="rel-section"><h3>Referenced by (${inn.length})</h3><ul class="rel-list">${list(inn,'←')}</ul></div>` : ""}
+    </div>
+  `;
+  panel.classList.add("open");
+  panel.querySelector("#panelClose").addEventListener("click", closePanel);
+  panel.querySelectorAll(".rel-item").forEach(el => {
+    el.addEventListener("click", () => selectNode(el.dataset.id));
+  });
+  draw();
+}
+function closePanel(){
+  selectedId = null;
+  panel.classList.remove("open");
+  panel.innerHTML = `<div class="empty-panel"><div style="font-size:22px;">🕸️</div><div>Click any node to see its description<br>and every relationship it's part of.</div></div>`;
+  draw();
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+
+// ---- search ----
+const searchInput = document.getElementById("search");
+searchInput.addEventListener("input", () => {
+  searchTerm = searchInput.value.trim().toLowerCase();
+  if (!searchTerm){ matchedIds = null; }
+  else {
+    matchedIds = new Set(nodes.filter(n =>
+      n.id.toLowerCase().includes(searchTerm) || (n.desc||"").toLowerCase().includes(searchTerm)
+    ).map(n=>n.id));
+  }
+  draw();
+});
+
+// ---- reset ----
+document.getElementById("resetBtn").addEventListener("click", () => {
+  searchInput.value = ""; searchTerm=""; matchedIds=null;
+  selectedId = null; closePanel();
+  activeGroups.clear(); GROUP_ORDER.forEach(g=>activeGroups.add(g));
+  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("off"));
+  d3.select(canvas).transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(width/2, height/2).scale(0.62));
+});
+
+function applyFilters(){ draw(); }
+
+// keep drawing while simulation cools, then settle
+setTimeout(()=>{ if (simulation.alpha() < 0.02) draw(); }, 2500);
+</script>
