@@ -22,41 +22,41 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-7">
       {/* Welcome */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {t('dashboard.welcome')}, <span className="text-purple-600">{user?.username}</span>
+        <h1 className="text-h1 text-ink-950 m-0">
+          {t('dashboard.welcome')}, <span className="text-brand-700">{user?.username}</span>
         </h1>
-        <p className="text-gray-400 text-sm mt-1">{t('app.tagline')}</p>
+        <p className="text-body text-ink-600 mt-1 mb-0">{t('app.tagline')}</p>
       </div>
 
-      {/* Start Screening CTA */}
+      {/* Start Screening CTA — the one flat brand surface on this page */}
       <button
         onClick={() => navigate('/screening')}
-        className="w-full flex items-center justify-between bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-2xl p-6 transition-all cursor-pointer border-none text-left shadow-lg shadow-purple-200 group"
+        className="w-full flex items-center justify-between gap-4 bg-brand-800 hover:bg-brand-700 text-white rounded-panel p-5 sm:p-6 transition-colors cursor-pointer border-none text-start"
       >
-        <div className="flex items-center gap-4">
-          <div className="w-13 h-13 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm group-hover:bg-white/20 transition-colors">
-            <Activity size={26} />
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-11 h-11 rounded-control bg-white/15 flex items-center justify-center shrink-0">
+            <Activity size={22} />
           </div>
-          <div>
-            <div className="text-lg font-semibold">{t('dashboard.startScreening')}</div>
-            <div className="text-purple-200 text-sm mt-0.5">{t('screening.uploadDesc')}</div>
+          <div className="min-w-0">
+            <div className="text-h2 font-semibold">{t('dashboard.startScreening')}</div>
+            <div className="text-meta text-brand-100 mt-0.5">{t('screening.uploadDesc')}</div>
           </div>
         </div>
-        <ArrowRight size={20} className="text-purple-200 group-hover:translate-x-1 transition-transform" />
+        <ArrowRight size={20} className="text-brand-100 shrink-0" />
       </button>
 
       {/* Recent Screenings */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <History size={18} className="text-purple-500" />
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-h2 text-ink-950 m-0 flex items-center gap-2">
+            <History size={17} className="text-ink-600" />
             {t('dashboard.recentScreenings')}
           </h2>
           {recent.length > 0 && (
-            <Link to="/history" className="text-sm text-purple-600 font-medium no-underline hover:text-purple-700 flex items-center gap-1">
+            <Link to="/history" className="text-meta font-semibold text-brand-600 hover:text-brand-800 no-underline flex items-center gap-1">
               {t('dashboard.viewAll')} <ArrowRight size={14} />
             </Link>
           )}
@@ -64,40 +64,38 @@ export default function DashboardPage() {
 
         {loading ? (
           <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+            <div className="w-8 h-8 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin" />
           </div>
         ) : recent.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-purple-100 p-10 text-center">
-            <div className="w-14 h-14 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
-              <Clock size={24} className="text-purple-300" />
-            </div>
-            <p className="text-gray-400 text-sm">{t('dashboard.noScreenings')}</p>
+          <div className="panel panel-body text-center py-10">
+            <Clock size={22} className="text-ink-300 mx-auto mb-3" />
+            <p className="text-body text-ink-600 m-0">{t('dashboard.noScreenings')}</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="panel">
             {recent.map((item) => {
               const level = getConfidenceLevel(item.confidence_score);
               return (
                 <Link
                   key={item.case_id}
                   to={`/results/${item.case_id}`}
-                  className="flex items-center justify-between bg-white rounded-xl border border-gray-100 p-4 no-underline hover:border-purple-200 hover:shadow-sm transition-all group"
+                  className="flex items-center justify-between gap-4 px-4 py-3.5 border-b border-line last:border-b-0 no-underline hover:bg-wash transition-colors group"
                 >
-                  <div>
-                    <div className="font-medium text-gray-900 group-hover:text-purple-700 transition-colors">
+                  <div className="min-w-0">
+                    <div className="text-body font-semibold text-ink-950 truncate">
                       {item.top_condition || t('history.pending')}
                     </div>
-                    <div className="text-sm text-gray-400 mt-0.5">
+                    <div className="text-meta text-ink-500 mt-0.5">
                       {new Date(item.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     {item.confidence_score && (
-                      <span className={`text-sm font-semibold px-3 py-1 rounded-full confidence-${level}`}>
+                      <span className={`text-meta font-semibold px-2.5 py-1 rounded-control tnum confidence-${level}`}>
                         {(item.confidence_score * 100).toFixed(0)}%
                       </span>
                     )}
-                    <ArrowRight size={16} className="text-gray-300 group-hover:text-purple-400 transition-colors" />
+                    <ArrowRight size={16} className="text-ink-300 group-hover:text-brand-600 transition-colors" />
                   </div>
                 </Link>
               );

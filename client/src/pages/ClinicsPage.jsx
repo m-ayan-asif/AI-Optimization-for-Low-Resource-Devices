@@ -16,7 +16,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Custom purple marker icon to match the app theme
+// Custom violet marker icon to match the app's brand mark
 const purpleIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
@@ -138,52 +138,51 @@ export default function ClinicsPage() {
   }, [showMap]);
 
   const availableCities = region ? (CITIES[region] || []) : [];
-  const selectClass = "flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all";
 
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-            <Building2 size={20} className="text-purple-500" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('clinics.title')}</h1>
+      <div className="flex items-center justify-between gap-4 pb-3 mb-6 border-b-2 border-ink-950">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Building2 size={19} className="text-ink-600 shrink-0" />
+          <h1 className="text-h1 text-ink-950 m-0 truncate">{t('clinics.title')}</h1>
         </div>
 
         {/* Map / List toggle */}
-        <div className="flex items-center bg-gray-100 rounded-xl p-1">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => setShowMap(true)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            aria-pressed={showMap}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-meta font-semibold border-2 cursor-pointer transition-colors ${
               showMap
-                ? 'bg-white text-purple-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'border-brand-600 bg-brand-50 text-brand-800'
+                : 'border-line-strong bg-surface text-ink-600 hover:border-ink-300'
             }`}
           >
-            <Map size={15} /> Map
+            <Map size={14} /> Map
           </button>
           <button
             onClick={() => setShowMap(false)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            aria-pressed={!showMap}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-meta font-semibold border-2 cursor-pointer transition-colors ${
               !showMap
-                ? 'bg-white text-purple-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'border-brand-600 bg-brand-50 text-brand-800'
+                : 'border-line-strong bg-surface text-ink-600 hover:border-ink-300'
             }`}
           >
-            <List size={15} /> List
+            <List size={14} /> List
           </button>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex gap-3 mb-6">
-        <select value={region} onChange={(e) => { setRegion(e.target.value); setCity(''); }} className={selectClass}>
+        <select value={region} onChange={(e) => { setRegion(e.target.value); setCity(''); }} className="field flex-1">
           <option value="">{t('clinics.allRegions')}</option>
           {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         {availableCities.length > 0 && (
-          <select value={city} onChange={(e) => setCity(e.target.value)} className={selectClass}>
+          <select value={city} onChange={(e) => setCity(e.target.value)} className="field flex-1">
             <option value="">{t('clinics.selectCity')}</option>
             {availableCities.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -192,55 +191,50 @@ export default function ClinicsPage() {
 
       {/* Map */}
       {showMap && (
-        <div className="mb-6 map-appear rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
-          <div
-            ref={mapContainerRef}
-            style={{ height: '420px', width: '100%' }}
-          />
+        <div className="mb-6 rounded-panel overflow-hidden border border-line-strong">
+          <div ref={mapContainerRef} style={{ height: '420px', width: '100%' }} />
         </div>
       )}
 
       {/* Clinic list */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin" />
         </div>
       ) : (
         <div className="space-y-3">
           {clinics.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-              <MapPin size={32} className="mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No clinics found for the selected filters.</p>
+            <div className="panel panel-body text-center py-12">
+              <MapPin size={22} className="text-ink-300 mx-auto mb-3" />
+              <p className="text-body text-ink-600 m-0">No clinics found for the selected filters.</p>
             </div>
           )}
           {clinics.map((clinic, i) => (
             <div
               key={i}
               onClick={() => handleClinicClick(clinic, i)}
-              className={`bg-white rounded-xl border p-5 transition-all cursor-pointer ${
-                activeClinic === i
-                  ? 'border-purple-300 shadow-md ring-1 ring-purple-100'
-                  : 'border-gray-100 hover:border-purple-200 hover:shadow-sm'
+              className={`panel p-5 cursor-pointer transition-colors ${
+                activeClinic === i ? 'border-brand-600 bg-brand-50' : 'hover:border-line-strong'
               }`}
             >
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{clinic.name}</h3>
-                  <p className="text-sm text-gray-400 mt-0.5">{clinic.city}, {clinic.region}</p>
+                <div className="min-w-0">
+                  <h3 className="text-body font-semibold text-ink-950 m-0">{clinic.name}</h3>
+                  <p className="text-meta text-ink-500 mt-0.5 mb-0">{clinic.city}, {clinic.region}</p>
                 </div>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clinic.mapsQuery || clinic.name + ' ' + clinic.address)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm font-medium no-underline hover:bg-purple-100 transition-colors shrink-0 border border-purple-100"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 text-brand-800 rounded-control text-meta font-semibold no-underline hover:bg-brand-100 transition-colors shrink-0"
                 >
                   <Navigation size={14} /> {t('clinics.getDirections')}
                 </a>
               </div>
-              <div className="flex items-center gap-5 mt-3 pt-3 border-t border-gray-50 text-sm text-gray-400">
-                <span className="flex items-center gap-1.5"><MapPin size={14} /> {clinic.address}</span>
-                <span className="flex items-center gap-1.5"><Phone size={14} /> {clinic.phone}</span>
+              <div className="flex items-center gap-5 mt-3 pt-3 border-t border-line text-meta text-ink-600">
+                <span className="flex items-center gap-1.5"><MapPin size={13} /> {clinic.address}</span>
+                <span className="flex items-center gap-1.5"><Phone size={13} /> {clinic.phone}</span>
               </div>
             </div>
           ))}

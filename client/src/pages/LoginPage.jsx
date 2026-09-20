@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -52,83 +52,96 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen auth-gradient flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-10">
-          <img src="/src/assets/logo.png" alt="SkinSense" className="w-20 h-20 mx-auto mb-5 object-contain" />
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{t('app.name')}</h1>
-          <p className="text-gray-400 text-sm mt-1.5">{t('app.tagline')}</p>
-        </div>
+    <div className="min-h-screen bg-paper flex flex-col">
+      {/* Chassis edge — echoes the app header, marks the top of the instrument */}
+      <div className="h-1 bg-brand-800 shrink-0" />
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-purple-100/50 border border-purple-100/60 p-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">{t('auth.login')}</h2>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-5 border border-red-100 flex items-center gap-2">
-              <AlertCircle size={16} className="shrink-0" />
-              <span>{error}</span>
+      <div className="flex-1 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[26rem]">
+          {/* Identity */}
+          <div className="flex items-center gap-3 mb-7">
+            <img
+              src="/src/assets/logo.png"
+              alt=""
+              className="w-12 h-12 object-contain shrink-0"
+            />
+            <div className="min-w-0">
+              <h1 className="text-h1 text-ink-950 m-0">{t('app.name')}</h1>
+              <p className="text-meta text-ink-500 m-0 mt-0.5">{t('app.tagline')}</p>
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">{t('auth.username')}</label>
-              <input
-                type="text"
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300"
-                placeholder={t('auth.usernamePlaceholder')}
-                autoComplete="username"
-              />
+          {/* Record panel */}
+          <div className="panel">
+            <div className="panel-head">
+              <h2 className="label m-0">{t('auth.login')}</h2>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">{t('auth.password')}</label>
-              <div className="relative">
-                <input
-                  type={showPass ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300 pr-11"
-                  placeholder={t('auth.passwordPlaceholder')}
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass(!showPass)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none p-1"
-                >
-                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-50 cursor-pointer text-sm shadow-md shadow-purple-200 flex items-center justify-center gap-2 border-none"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  {t('auth.login')}
-                  <ArrowRight size={16} />
-                </>
+            <div className="panel-body">
+              {error && (
+                <div className="notice notice-critical mb-5" role="alert">
+                  <AlertCircle size={18} className="text-conf-critical shrink-0 mt-px" />
+                  <span className="text-body">{error}</span>
+                </div>
               )}
-            </button>
-          </form>
 
-          <div className="mt-6 pt-5 border-t border-gray-100 text-center">
-            <p className="text-sm text-gray-400">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label htmlFor="username" className="label mb-2">
+                    {t('auth.username')}
+                  </label>
+                  <input
+                    id="username"
+                    type="text"
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                    className="field"
+                    placeholder={t('auth.usernamePlaceholder')}
+                    autoComplete="username"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="password" className="label mb-2">
+                    {t('auth.password')}
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      type={showPass ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      className="field pe-11"
+                      placeholder={t('auth.passwordPlaceholder')}
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      aria-label={t('auth.password')}
+                      className="absolute end-1 top-1/2 -translate-y-1/2 p-2.5 text-ink-600 hover:text-ink-950 cursor-pointer bg-transparent border-none"
+                    >
+                      {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button type="submit" disabled={loading} className="btn btn-primary w-full">
+                  {loading ? (
+                    <span className="w-[18px] h-[18px] border-2 border-white/35 border-t-white rounded-pill animate-spin" />
+                  ) : (
+                    t('auth.login')
+                  )}
+                </button>
+              </form>
+            </div>
+
+            <div className="border-t border-line px-4 py-3.5 text-meta text-ink-600 text-center">
               {t('auth.noAccount')}{' '}
-              <Link to="/register" className="text-purple-600 font-semibold no-underline hover:text-purple-700">
+              <Link to="/register" className="link">
                 {t('auth.registerHere')}
               </Link>
-            </p>
+            </div>
           </div>
         </div>
       </div>

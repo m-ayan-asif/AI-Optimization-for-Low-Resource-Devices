@@ -109,66 +109,63 @@ export default function ScreeningPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Step indicator */}
-      <div className="flex items-center gap-3 mb-8">
+      {/* Step indicator — a numbered sequence, not a badge cluster */}
+      <div className="flex items-center gap-2 mb-7" aria-label={t('screening.title')}>
         {STEPS.map((s, i) => (
-          <div key={s} className="flex items-center gap-3 flex-1">
+          <div key={s} className="flex items-center gap-2 flex-1">
             <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
-                i < step
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-200'
-                  : i === step
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-4 ring-purple-100'
-                    : 'bg-gray-100 text-gray-400'
+              className={`w-8 h-8 rounded-control flex items-center justify-center text-meta font-bold shrink-0 tnum ${
+                i <= step ? 'bg-brand-800 text-white' : 'bg-wash text-ink-500'
               }`}
             >
-              {i < step ? <Check size={16} /> : i + 1}
+              {i < step ? <Check size={14} /> : i + 1}
             </div>
             <span
-              className={`text-sm hidden sm:inline font-medium ${
-                i <= step ? 'text-purple-700' : 'text-gray-300'
+              className={`text-meta hidden sm:inline font-semibold ${
+                i <= step ? 'text-ink-950' : 'text-ink-300'
               }`}
             >
               {t(`screening.step${i + 1}`)}
             </span>
             {i < STEPS.length - 1 && (
-              <div
-                className={`flex-1 h-0.5 rounded ${i < step ? 'bg-purple-400' : 'bg-gray-100'}`}
-              />
+              <div className={`flex-1 h-px ${i < step ? 'bg-brand-800' : 'bg-line'}`} />
             )}
           </div>
         ))}
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-5 flex items-center gap-2 border border-red-100">
-          <AlertCircle size={16} />
-          {error.includes('No skin detected') ? t('screening.noSkinError') : error}
+        <div className="notice notice-critical mb-5" role="alert">
+          <AlertCircle size={18} className="text-conf-critical shrink-0 mt-px" />
+          <span className="text-body">
+            {error.includes('No skin detected') ? t('screening.noSkinError') : error}
+          </span>
         </div>
       )}
 
       {/* Step 1: Image Upload */}
       {step === 0 && (
-        <div className="bg-white rounded-2xl border border-purple-100 p-8 shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">{t('screening.uploadTitle')}</h2>
-          <p className="text-gray-400 text-sm mb-6">{t('screening.uploadDesc')}</p>
+        <div className="panel panel-body">
+          <h2 className="text-h2 text-ink-950 m-0 mb-1">{t('screening.uploadTitle')}</h2>
+          <p className="text-body text-ink-600 mb-6 mt-1">{t('screening.uploadDesc')}</p>
 
           {!imagePreview ? (
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-purple-200 rounded-2xl p-14 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50/30 transition-all group"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+              className="border-2 border-dashed border-line-strong rounded-panel p-12 text-center cursor-pointer hover:border-brand-600 hover:bg-wash transition-colors"
             >
-              <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4 group-hover:bg-purple-100 transition-colors">
-                <ImagePlus size={28} className="text-purple-400" />
-              </div>
-              <p className="text-gray-600 font-medium">{t('screening.dragDrop')}</p>
-              <p className="text-gray-300 text-sm mt-2">{t('screening.requirements')}</p>
+              <ImagePlus size={30} className="text-ink-500 mx-auto mb-3" />
+              <p className="text-body font-semibold text-ink-800 m-0">{t('screening.dragDrop')}</p>
+              <p className="text-meta text-ink-500 mt-2 mb-0">{t('screening.requirements')}</p>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="relative rounded-2xl overflow-hidden bg-gray-50 border border-gray-100">
+              <div className="relative rounded-frame overflow-hidden bg-wash border border-line-strong">
                 <img src={imagePreview} alt="Preview" className="w-full max-h-80 object-contain" />
                 <button
                   onClick={() => {
@@ -176,14 +173,15 @@ export default function ScreeningPage() {
                     setImagePreview(null);
                     setImageErrors([]);
                   }}
-                  className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer border border-gray-200 hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition-all text-gray-500"
+                  aria-label={t('common.cancel')}
+                  className="absolute top-2 end-2 w-8 h-8 bg-surface rounded-control flex items-center justify-center cursor-pointer border border-line-strong hover:border-conf-critical hover:text-conf-critical transition-colors text-ink-600"
                 >
                   <X size={16} />
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-sm text-green-600">
+              <div className="flex items-center gap-2 text-body text-conf-good">
                 <Check size={16} />
-                <span className="font-medium">
+                <span className="font-semibold">
                   {t('screening.imageReady', { name: imageFile.name })}
                 </span>
               </div>
@@ -200,19 +198,18 @@ export default function ScreeningPage() {
           />
 
           {imageErrors.length > 0 && (
-            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mt-4 border border-red-100">
-              {imageErrors.map((err, i) => (
-                <div key={i}>{err}</div>
-              ))}
+            <div className="notice notice-critical mt-4">
+              <AlertCircle size={18} className="text-conf-critical shrink-0 mt-px" />
+              <div className="text-body">
+                {imageErrors.map((err, i) => (
+                  <div key={i}>{err}</div>
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="flex justify-end mt-8">
-            <button
-              onClick={goToVoice}
-              disabled={!imageFile || loading}
-              className="flex items-center gap-2 px-7 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 disabled:opacity-40 transition-all cursor-pointer text-sm font-semibold border-none shadow-md shadow-purple-200"
-            >
+          <div className="flex justify-end mt-7">
+            <button onClick={goToVoice} disabled={!imageFile || loading} className="btn btn-primary">
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               {t('screening.next')} <ArrowRight size={16} />
             </button>
@@ -222,68 +219,70 @@ export default function ScreeningPage() {
 
       {/* Step 2: Voice + Text Symptoms */}
       {step === 1 && (
-        <div className="bg-white rounded-2xl border border-purple-100 p-8 shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">{t('screening.voiceTitle')}</h2>
-          <p className="text-gray-400 text-sm mb-6">{t('screening.voiceDesc')}</p>
+        <div className="panel panel-body">
+          <h2 className="text-h2 text-ink-950 m-0 mb-1">{t('screening.voiceTitle')}</h2>
+          <p className="text-body text-ink-600 mb-6 mt-1">{t('screening.voiceDesc')}</p>
 
-          <div className="mb-8">
-            <label className="block text-sm font-medium text-gray-600 mb-2">
-              {t('screening.voiceLang')}
-            </label>
-            <div className="flex gap-3 flex-wrap">
+          <div className="mb-7">
+            <label className="label mb-2">{t('screening.voiceLang')}</label>
+            <div className="flex gap-2.5 flex-wrap">
               {[
                 { code: 'en', label: 'English' },
                 { code: 'ur', label: 'اردو' },
                 { code: 'ro', label: t('screening.langRomanUrdu') },
-              ].map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => setVoiceLang(lang.code)}
-                  className={`px-5 py-2.5 rounded-xl text-sm font-medium border-2 cursor-pointer transition-all ${
-                    voiceLang === lang.code
-                      ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm'
-                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  {lang.label}
-                </button>
-              ))}
+              ].map((lang) => {
+                const active = voiceLang === lang.code;
+                return (
+                  <button
+                    key={lang.code}
+                    onClick={() => setVoiceLang(lang.code)}
+                    aria-pressed={active}
+                    className={`px-4 py-2 rounded-control text-body font-semibold border-2 cursor-pointer transition-colors ${
+                      active
+                        ? 'border-brand-600 bg-brand-50 text-brand-800'
+                        : 'border-line-strong bg-surface text-ink-600 hover:border-ink-300'
+                    }`}
+                  >
+                    {lang.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="flex flex-col items-center gap-5 py-8">
-            <div className="relative">
-              <button
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`relative w-24 h-24 rounded-full flex items-center justify-center cursor-pointer border-none transition-all ${
-                  isRecording
-                    ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-200 recording-pulse'
-                    : 'bg-gradient-to-br from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800 shadow-lg shadow-purple-200'
-                }`}
-              >
-                {isRecording ? (
-                  <MicOff size={32} className="text-white" />
-                ) : (
-                  <Mic size={32} className="text-white" />
-                )}
-              </button>
-            </div>
-            <p className="text-sm text-gray-500 font-medium">
+          <div className="flex flex-col items-center gap-5 py-8 border-y border-line">
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              aria-pressed={isRecording}
+              aria-label={isRecording ? t('screening.voiceStop') : t('screening.voiceRecord')}
+              className={`relative w-24 h-24 rounded-pill flex items-center justify-center cursor-pointer border-none transition-colors ${
+                isRecording
+                  ? 'bg-conf-critical hover:opacity-90 recording-pulse'
+                  : 'bg-brand-800 hover:bg-brand-700'
+              }`}
+            >
+              {isRecording ? (
+                <MicOff size={32} className="text-white" />
+              ) : (
+                <Mic size={32} className="text-white" />
+              )}
+            </button>
+            <p className="text-body text-ink-600 font-semibold tnum">
               {isRecording
                 ? `${t('screening.voiceStop')} — ${duration}s / 30s`
                 : t('screening.voiceRecord')}
             </p>
             {audioBlob && !isRecording && (
-              <div className="flex items-center gap-2 text-sm text-green-600 font-medium bg-green-50 px-4 py-2 rounded-full">
-                <Check size={16} /> Recording captured ({duration}s)
+              <div className="flex items-center gap-2 text-meta font-semibold text-conf-good bg-conf-good-tint px-3.5 py-1.5 rounded-control">
+                <Check size={15} /> Recording captured ({duration}s)
               </div>
             )}
-            {micError && <div className="text-sm text-red-500">{micError}</div>}
+            {micError && <div className="text-meta text-conf-critical">{micError}</div>}
           </div>
 
-          <div className="border-t border-gray-100 pt-6 mt-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-3">
-              <Type size={15} className="text-purple-400" />
+          <div className="pt-6 mt-2">
+            <label className="flex items-center gap-2 label mb-3">
+              <Type size={14} className="text-ink-500" />
               {t('screening.textTitle')}
             </label>
             <textarea
@@ -291,30 +290,23 @@ export default function ScreeningPage() {
               onChange={(e) => setTextInput(e.target.value)}
               placeholder={t('screening.textPlaceholder')}
               rows={4}
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-none transition-all"
+              className="field resize-none"
               dir="auto"
             />
           </div>
 
-          <div className="flex justify-between mt-6 pt-6 border-t border-gray-100">
-            <button
-              onClick={() => setStep(0)}
-              className="flex items-center gap-2 px-4 py-2.5 text-gray-500 hover:text-gray-700 cursor-pointer bg-transparent border-none text-sm font-medium"
-            >
+          <div className="flex justify-between mt-6 pt-6 border-t border-line">
+            <button onClick={() => setStep(0)} className="btn btn-quiet">
               <ArrowLeft size={16} /> {t('screening.back')}
             </button>
             <div className="flex gap-3">
-              <button
-                onClick={() => goToAnalysis(true)}
-                disabled={loading}
-                className="flex items-center gap-2 px-5 py-2.5 text-gray-500 cursor-pointer bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => goToAnalysis(true)} disabled={loading} className="btn btn-secondary">
                 <SkipForward size={16} /> {t('screening.voiceSkip')}
               </button>
               <button
                 onClick={() => goToAnalysis(false)}
                 disabled={(!audioBlob && !textInput.trim()) || loading}
-                className="flex items-center gap-2 px-7 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 disabled:opacity-40 transition-all cursor-pointer text-sm font-semibold border-none shadow-md shadow-purple-200"
+                className="btn btn-primary"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {t('screening.submit')} <ArrowRight size={16} />
@@ -326,10 +318,10 @@ export default function ScreeningPage() {
 
       {/* Step 3: Analysis loading */}
       {step === 2 && (
-        <div className="bg-white rounded-2xl border border-purple-100 p-16 text-center shadow-sm">
-          <div className="w-16 h-16 border-3 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-8"></div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">{t('screening.analyzing')}</h2>
-          <p className="text-gray-400 text-sm">{t('screening.analyzingDesc')}</p>
+        <div className="panel panel-body text-center py-16">
+          <div className="w-12 h-12 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin mx-auto mb-7" />
+          <h2 className="text-h2 text-ink-950 m-0 mb-2">{t('screening.analyzing')}</h2>
+          <p className="text-body text-ink-600 m-0">{t('screening.analyzingDesc')}</p>
         </div>
       )}
     </div>
