@@ -12,3 +12,5 @@ huggingface_hub
 soundfile
 librosa
 av
+open_clip_torch
+sentencepiece
