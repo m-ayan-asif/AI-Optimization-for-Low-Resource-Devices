@@ -1,3 +1,5 @@
+import { getClientDeviceSpecs } from '../utils/telemetry';
+import api from '../utils/api';
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -100,7 +102,24 @@ export default function ScreeningPage() {
         }
       }
       setStep(2);
-      await runInference(caseId);
+
+      // 1. Run inference and capture the prediction response
+      const predictionResponse = await runInference(caseId);
+
+      // 2. Silently ship client-side and server-side telemetry to database
+      try {
+        const clientSpecs = getClientDeviceSpecs();
+        const telemetryPayload = {
+          ...clientSpecs,
+          audio_processing_ms: duration ? duration * 1000 : 0,
+          ...(predictionResponse?.telemetry || {}),
+        };
+        await api.post(`/monitoring/${caseId}/telemetry`, telemetryPayload);
+      } catch (telemetryErr) {
+        console.warn('Telemetry recording skipped:', telemetryErr.message);
+      }
+
+      // 3. Navigate to results page
       navigate(`/results/${caseId}`);
     } catch (err) {
       setStep(0); // Bounce back to step 0 if image fails skin validation
@@ -209,7 +228,11 @@ export default function ScreeningPage() {
           )}
 
           <div className="flex justify-end mt-7">
-            <button onClick={goToVoice} disabled={!imageFile || loading} className="btn btn-primary">
+            <button
+              onClick={goToVoice}
+              disabled={!imageFile || loading}
+              className="btn btn-primary"
+            >
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               {t('screening.next')} <ArrowRight size={16} />
             </button>
@@ -300,7 +323,11 @@ export default function ScreeningPage() {
               <ArrowLeft size={16} /> {t('screening.back')}
             </button>
             <div className="flex gap-3">
-              <button onClick={() => goToAnalysis(true)} disabled={loading} className="btn btn-secondary">
+              <button
+                onClick={() => goToAnalysis(true)}
+                disabled={loading}
+                className="btn btn-secondary"
+              >
                 <SkipForward size={16} /> {t('screening.voiceSkip')}
               </button>
               <button
