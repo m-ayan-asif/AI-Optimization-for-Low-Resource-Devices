@@ -3,7 +3,8 @@ SkinSense ML Inference Service
 Loads the distilled MobileNetV3-Large model and exposes a prediction API.
 Called by the Express backend when a screening is submitted.
 """
-
+import psutil
+import math
 import io
 import os
 import time
@@ -204,17 +205,47 @@ def health():
     }
 
 
+def compute_prediction_entropy(probabilities: torch.Tensor) -> float:
+    """
+    Computes Shannon Entropy of predicted probability distribution.
+    Uniform/flat distribution (model confused, e.g. dog/non-lesion) -> High entropy.
+    Confident peaked prediction -> Low entropy.
+    """
+    entropy = 0.0
+    for p in probabilities:
+        val = p.item()
+        if val > 1e-6:
+            entropy -= val * math.log(val)
+    return entropy
+
+def check_image_blur(cv_image: np.ndarray, threshold: float = 40.0) -> float:
+    """
+    Computes Laplacian variance to detect out-of-focus or blurry images.
+    """
+    gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+
+
 @app.post("/predict")
 async def predict(image: UploadFile = File(...)):
-    start_time = time.time()
+    start_total = time.perf_counter()
+    process = psutil.Process()
+    ram_before = process.memory_info().rss / (1024 * 1024)
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+    # ── Phase 1: Preprocessing & Runtime Validation ──
+    start_prep = time.perf_counter()
     contents = await image.read()
     try:
         pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception:
         return JSONResponse(status_code=400, content={"error": "Invalid image file"})
 
-    # Validate that the image contains skin
+    # Check 1: Skin color presence across Fitzpatrick scales
     if not is_skin_image(pil_image):
         return JSONResponse(
             status_code=400,
@@ -224,23 +255,51 @@ async def predict(image: UploadFile = File(...)):
             }
         )
 
-    # Preprocess
-    input_tensor = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
+    # Check 2: Blur detection (reject ungradable blurred images)
+    cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+    blur_score = check_image_blur(cv_img)
+    if blur_score < 20.0:  # Severe motion blur
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "The image is too blurry for an accurate screening. Please hold your camera steady and retake.",
+                "code": "IMAGE_TOO_BLURRY",
+                "blur_score": round(blur_score, 2)
+            }
+        )
 
-    # Run inference
+    input_tensor = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
+    preprocess_ms = int((time.perf_counter() - start_prep) * 1000)
+
+    # ── Phase 2: Model Forward Pass ──
+    start_infer = time.perf_counter()
     with torch.no_grad():
         logits = model(input_tensor)
         probabilities = torchF.softmax(logits, dim=1)[0]
+    inference_ms = int((time.perf_counter() - start_infer) * 1000)
 
-    all_scores = {}
-    for i, name in enumerate(CLASS_NAMES):
-        all_scores[name] = round(probabilities[i].item(), 4)
+    all_scores = {name: round(probabilities[i].item(), 4) for i, name in enumerate(CLASS_NAMES)}
 
-    top_idx = probabilities.argmax().item()
+    # Extract top-1 and top-2 predictions
+    sorted_probs, sorted_indices = torch.sort(probabilities, descending=True)
+    top_idx = sorted_indices[0].item()
     top_condition = CLASS_NAMES[top_idx]
-    confidence_score = float(probabilities[top_idx].item())
+    confidence_score = float(sorted_probs[0].item())
+    second_confidence = float(sorted_probs[1].item())
+    confidence_margin = confidence_score - second_confidence
 
-    # Generate Grad-CAM heatmap
+    entropy = compute_prediction_entropy(probabilities)
+
+    # ── Phase 3: Out-of-Distribution & Non-Lesion Check ──
+    # If entropy is high (> 1.65) or top-1 margin is negligible (< 0.05),
+    # the model is guessing uniformly (e.g. dog fur, random objects).
+    is_ambiguous_or_ood = (
+        confidence_score <= LOW_CONFIDENCE_THRESHOLD 
+        or (entropy > 1.65 and confidence_margin < 0.08)
+    )
+
+    # ── Phase 4: Grad-CAM Explainability Heatmap ──
+    start_cam = time.perf_counter()
     input_for_cam = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
     cam, _ = grad_cam.generate(input_for_cam, class_idx=top_idx)
 
@@ -249,11 +308,31 @@ async def predict(image: UploadFile = File(...)):
     heatmap_filename = f"{heatmap_id}.png"
     heatmap_path = os.path.join(HEATMAP_DIR, heatmap_filename)
     Image.fromarray(overlay).save(heatmap_path)
+    gradcam_ms = int((time.perf_counter() - start_cam) * 1000)
 
-    inference_time_ms = int((time.time() - start_time) * 1000)
+    # ── Phase 5: Hardware & Memory Profiling ──
+    total_server_time_ms = int((time.perf_counter() - start_total) * 1000)
+    ram_after = process.memory_info().rss / (1024 * 1024)
+    server_ram_used_mb = round(max(0.0, ram_after - ram_before), 2)
 
-    # Low confidence / Clear skin threshold (<= 30%)
-    if confidence_score <= LOW_CONFIDENCE_THRESHOLD:
+    gpu_vram_used_mb = 0.0
+    if torch.cuda.is_available():
+        gpu_vram_used_mb = round(torch.cuda.max_memory_allocated() / (1024 * 1024), 2)
+
+    telemetry_data = {
+        "image_preprocess_ms": preprocess_ms,
+        "model_inference_ms": inference_ms,
+        "gradcam_generation_ms": gradcam_ms,
+        "total_server_time_ms": total_server_time_ms,
+        "server_ram_used_mb": server_ram_used_mb,
+        "gpu_vram_used_mb": gpu_vram_used_mb,
+        "device_type": str(DEVICE.type),
+        "blur_score": round(blur_score, 1),
+        "entropy": round(entropy, 3),
+        "confidence_margin": round(confidence_margin, 3)
+    }
+
+    if is_ambiguous_or_ood:
         return {
             "model_version": "mobilenetv3-large-distilled-v1",
             "top_condition": "No Disease / Inconclusive",
@@ -261,7 +340,8 @@ async def predict(image: UploadFile = File(...)):
             "status": "out_of_scope",
             "all_scores": all_scores,
             "heatmap_path": heatmap_filename,
-            "inference_time_ms": inference_time_ms,
+            "inference_time_ms": total_server_time_ms,
+            "telemetry": telemetry_data
         }
 
     return {
@@ -271,7 +351,8 @@ async def predict(image: UploadFile = File(...)):
         "status": "classified",
         "all_scores": all_scores,
         "heatmap_path": heatmap_filename,
-        "inference_time_ms": inference_time_ms,
+        "inference_time_ms": total_server_time_ms,
+        "telemetry": telemetry_data
     }
 
 
