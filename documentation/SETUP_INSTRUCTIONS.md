@@ -3,7 +3,6 @@
 Three services run side by side: **inference (Python, 5001)**, **backend (Express, 5000)** and **frontend (React, 5173)**.
 
 ## Prerequisites
-
 - Node.js **20.19+** (required by Vite 7)
 - Python 3.10+ (a virtual environment is recommended)
 - PostgreSQL installed and running
@@ -37,24 +36,30 @@ ai-optimization-for-low-resource-devices/
 │       │   ├── LoginPage, RegisterPage, DashboardPage
 │       │   ├── ScreeningPage, ResultsPage, HistoryPage, ClinicsPage
 │       │   └── clinician/        # ClinicianDashboard, CaseReviewPage, ClinicianHistoryPage
-│       ├── utils/                # api.js, constants.js, imageValidation.js
+│       ├── utils/                # api.js, constants.js, imageValidation.js, telemetry.js
 │       └── __tests__/            # Vitest tests + setup
 ├── server/                       # Express backend (port 5000)
 │   ├── package.json
 │   ├── server.js                 # entry point
 │   ├── .env.example              # copy to .env
-│   ├── migrations/               # 001_initial_schema.sql, 002_clinician_profile_fields.sql
+│   ├── migrations/               # 001_initial_schema, 002_clinician_profile_fields, 003_device_monitoring
 │   ├── src/
 │   │   ├── app.js
 │   │   ├── config/               # env config
-│   │   ├── controllers/          # auth, clinic, clinician, screening
-│   │   ├── middleware/           # auth, rateLimiter, upload
+│   │   ├── controllers/          # auth, clinic, clinician, screening, monitoring
+│   │   ├── middleware/           # auth, rateLimiter, telemetryLimiter, upload
 │   │   ├── models/               # db.js, tokenBlacklist.js
-│   │   ├── routes/               # auth, clinics, clinicianRoutes, screening
+│   │   ├── routes/               # auth, clinics, clinicianRoutes, screening, monitoring
 │   │   └── utils/                # mockData.js (fallback predictions)
 │   └── tests/                    # Jest tests + setup
+├── dashboard/                    # Streamlit monitoring console (port 8501)
+│   ├── app.py
+│   ├── metrics.py                # median / p95 / device-class helpers (unit-tested)
+│   ├── requirements.txt
+│   └── tests/
 ├── inference/                    # FastAPI ML service (port 5001)
 │   ├── server.py                 # /health, /predict, /transcribe, /heatmaps
+│   ├── quality.py                # blur / skin / confidence guards (torch-free)
 │   ├── download_asr_model.py     # one-time Whisper Urdu download
 │   ├── requirements.txt
 │   ├── models/
@@ -92,7 +97,6 @@ git lfs pull
 Model weights (e.g. `inference/models/student_large_distilled.pth`) are stored in Git LFS. Without `git lfs pull` the file is a small text pointer and the inference service will fail to load the model.
 
 Already cloned? Update with:
-
 ```bash
 git checkout main
 git pull origin main
@@ -105,9 +109,18 @@ git lfs pull
 psql -U postgres -c "CREATE DATABASE skinsense;"
 psql -U postgres -d skinsense -f server/migrations/001_initial_schema.sql
 psql -U postgres -d skinsense -f server/migrations/002_clinician_profile_fields.sql
+psql -U postgres -d skinsense -f server/migrations/003_device_monitoring.sql
 ```
+Run migrations in numeric order. All three are required. Migration 003 is idempotent, so it is safe to re-run on a database that already has an earlier draft of the `device_telemetry` table (it adds the missing `client_ram_used_mb` column and enforces one telemetry row per case).
 
-Run migrations in numeric order. Both are required.
+**Optional: read-only role for the dashboard** (recommended, so the dashboard can never modify data):
+```sql
+CREATE ROLE skinsense_dash LOGIN PASSWORD 'choose-a-strong-password';
+GRANT CONNECT ON DATABASE skinsense TO skinsense_dash;
+GRANT USAGE ON SCHEMA public TO skinsense_dash;
+GRANT SELECT ON device_telemetry, screening_cases, predictions TO skinsense_dash;
+```
+Then add `DASHBOARD_DB_USER` and `DASHBOARD_DB_PASSWORD` to `server/.env`.
 
 ## 3. Backend
 
@@ -116,17 +129,16 @@ cd server
 npm install
 cp .env.example .env      # Windows: copy .env.example .env
 ```
-
 Edit `server/.env`:
 
-| Variable                                                  | Purpose                                               |
-| --------------------------------------------------------- | ----------------------------------------------------- |
-| `PORT`                                                    | API port (default 5000)                               |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | PostgreSQL connection                                 |
-| `JWT_SECRET`                                              | Set a strong random value                             |
-| `JWT_EXPIRES_IN`                                          | Token lifetime (default 30m)                          |
-| `UPLOAD_DIR`                                              | Image/audio upload folder                             |
-| `INFERENCE_URL`                                           | Inference service URL (default http://localhost:5001) |
+| Variable | Purpose |
+|---|---|
+| `PORT` | API port (default 5000) |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | PostgreSQL connection |
+| `JWT_SECRET` | Set a strong random value |
+| `JWT_EXPIRES_IN` | Token lifetime (default 30m) |
+| `UPLOAD_DIR` | Image/audio upload folder |
+| `INFERENCE_URL` | Inference service URL (default http://localhost:5001) |
 
 ## 4. Inference service
 
@@ -134,16 +146,13 @@ Edit `server/.env`:
 cd inference
 python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # includes psutil (used for runtime memory profiling)
 python download_asr_model.py      # one time, needs internet, ~1.5 GB
 ```
-
 Optional GPU build of PyTorch (adjust CUDA version to yours):
-
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
-
 Optional environment variables: `MODEL_PATH`, `HEATMAP_DIR`, `ASR_MODEL_PATH`, `INFERENCE_PORT`.
 
 ## 5. Frontend
@@ -153,7 +162,23 @@ cd client
 npm install
 ```
 
-## 6. Run everything (three terminals)
+## 6. Monitoring dashboard (optional, 4th terminal)
+
+```bash
+cd dashboard
+pip install -r requirements.txt
+streamlit run app.py              # http://localhost:8501
+```
+It reads `device_telemetry` from PostgreSQL using the credentials in `server/.env` (there is no built-in password default). Bind it to localhost only; it has no login of its own.
+
+What the numbers mean:
+- Latency is shown as **median and p95**, not the mean, so one slow outlier does not dominate.
+- Values a browser does not report are stored as `NULL` and **excluded** from statistics, never replaced by a default.
+- **Client JS heap** is the memory used by the web page itself (Chromium browsers only), not the device's total or free RAM.
+- **Device RAM** comes from `navigator.deviceMemory`, which browsers round and cap at 8 GB.
+- The inference service warms up the model at startup, so the first screening is not slowed by one-off initialisation. Use the *Exclude first run* filter if you still want to drop it.
+
+## 7. Run everything (three terminals)
 
 Start in this order:
 
@@ -170,34 +195,37 @@ cd client && npm run dev                 # http://localhost:5173
 
 Vite proxies `/api` to port 5000, and the backend only allows CORS from `http://localhost:5173`.
 
-## 7. Verify the setup
+## 8. Verify the setup
 
-1. `http://localhost:5001/health` returns `status: ok`, the device and the 7 classes.
+1. `http://localhost:5001/health` returns `status: ok`, the device and the 7 classes. Check `model_loaded: true` (if `false`, the service is running with random weights and every prediction is tagged `-UNTRAINED`).
 2. `http://localhost:5000/api/health` returns `status: ok`.
 3. Open `http://localhost:5173`, register, start a screening, upload an image and run analysis.
 4. Check the result's model version. If it contains **"mock"**, the inference service was not reached and the backend used its fallback.
 
-## 8. Run tests
+## 9. Run tests
 
 ```bash
 cd server && npm test
 cd client && npm test
 cd inference && python -m pytest tests/ -v
+cd dashboard && python -m pytest tests/ -v
 ```
-
-Details: [TESTING.md](TESTING.md)
+Server tests are fully mocked (no database, no network). `inference/tests/test_quality.py` runs without PyTorch: `python -m pytest tests/test_quality.py --noconftest`. Details: [TESTING.md](TESTING.md)
 
 ## Troubleshooting
 
-| Problem                                           | Likely cause / fix                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------------- |
-| Model fails to load, weights look like ~130 bytes | Git LFS not pulled: run `git lfs pull`                              |
-| Results always say "mock"                         | Inference service not running, wrong `INFERENCE_URL`, or port clash |
-| Voice transcript is empty                         | Whisper model not downloaded: run `python download_asr_model.py`    |
-| `ECONNREFUSED` on port 5432                       | PostgreSQL not running or wrong DB credentials in `.env`            |
-| Vite fails to start                               | Node.js older than 20.19: upgrade Node                              |
-| CORS errors                                       | Frontend must run on port 5173                                      |
-| Port already in use                               | Stop the old process or change `PORT` / `INFERENCE_PORT`            |
+| Problem | Likely cause / fix |
+|---|---|
+| Model fails to load, weights look like ~130 bytes | Git LFS not pulled: run `git lfs pull` |
+| Results always say "mock" | Inference service not running, wrong `INFERENCE_URL`, or port clash |
+| Dashboard says "No database password configured" | Set `DB_PASSWORD` (or `DASHBOARD_DB_PASSWORD`) in `server/.env` |
+| Screening returns "too blurry" / "no skin detected" | The runtime guards rejected the photo: retake in good light, in focus, with skin in frame |
+| Inference service exits with "is a Git LFS pointer" | Run `git lfs pull` and restart |
+| Voice transcript is empty | Whisper model not downloaded: run `python download_asr_model.py` |
+| `ECONNREFUSED` on port 5432 | PostgreSQL not running or wrong DB credentials in `.env` |
+| Vite fails to start | Node.js older than 20.19: upgrade Node |
+| CORS errors | Frontend must run on port 5173 |
+| Port already in use | Stop the old process or change `PORT` / `INFERENCE_PORT` |
 
 ## Contributing workflow
 
@@ -208,5 +236,4 @@ git add <files>
 git commit -m "feat: short description"
 git push origin feature/short-description
 ```
-
 Never commit `server/.env` or `server/uploads/`.

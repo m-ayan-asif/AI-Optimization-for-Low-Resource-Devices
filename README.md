@@ -5,7 +5,6 @@ AI-assisted dermatological screening for low-income, low-connectivity settings. 
 > **Disclaimer:** SkinSense is a screening aid, not a diagnostic tool. It does not replace a qualified clinician.
 
 ## Target Conditions
-
 Vitiligo, Melasma, Psoriasis, Eczema, Tinea, Contact Dermatitis, Seborrheic Dermatitis.
 
 ## Architecture
@@ -19,6 +18,8 @@ flowchart LR
     I --> M[MobileNetV3-Large<br/>distilled student]
     I --> G[Grad-CAM heatmap]
     I --> W[Whisper Urdu ASR]
+    S -->|telemetry| DB
+    D[Streamlit dashboard<br/>:8501] -->|read-only SQL| DB
     S -.->|service down| F[Mock prediction fallback]
 ```
 
@@ -54,19 +55,18 @@ sequenceDiagram
 If the inference service is unreachable, the Express server falls back to **mock predictions** (`model_version` contains "mock"), so always check the model version when validating results.
 
 ## Tech Stack
-
-| Layer     | Tech                                                                                                     |
-| --------- | -------------------------------------------------------------------------------------------------------- |
-| Frontend  | React 19, Vite 7, Tailwind 4, react-router, i18next (English/Urdu), Leaflet                              |
-| Backend   | Node.js, Express 4, PostgreSQL, JWT auth, multer                                                         |
+| Layer | Tech |
+|---|---|
+| Frontend | React 19, Vite 7, Tailwind 4, react-router, i18next (English/Urdu), Leaflet |
+| Backend | Node.js, Express 4, PostgreSQL, JWT auth, multer |
 | Inference | FastAPI, PyTorch, MobileNetV3-Large (student model distilled from a teacher), Grad-CAM, Whisper Urdu ASR |
-| Training  | PyTorch notebooks (`notebooks/`)                                                                         |
+| Training | PyTorch notebooks (`notebooks/`) |
 
 ## Repository Layout
-
 ```
 client/          React web app (patient + clinician portals)
 server/          Express API, migrations, tests
+dashboard/       Streamlit runtime-monitoring console
 inference/       FastAPI ML service, model weights, tests
 models/          Trained checkpoints (teacher, student, fine-tuned)
 notebooks/       Data exploration, preprocessing, training
@@ -74,11 +74,9 @@ documentation/   Setup, ML integration and testing guides
 ```
 
 ## Datasets
-
 DermaCon-IN, SCIN, SkinDisNet.
 
 ## Quick Start
-
 Prerequisites: Node.js 20.19+, Python 3.10+, PostgreSQL, Git + Git LFS.
 
 Full instructions: [documentation/SETUP_INSTRUCTIONS.md](documentation/SETUP_INSTRUCTIONS.md)
@@ -97,34 +95,37 @@ cd server && npm install && cp .env.example .env && npm run dev
 cd client && npm install && npm run dev
 ```
 
-## Testing
+## Runtime Validation and Monitoring
+- **Input guards** (inference service): rejects empty or oversized files, images with no skin tones, and blurry photos; low-confidence or near-uniform predictions are reported as *Inconclusive* instead of a forced diagnosis.
+- **Honest model status:** `/health` reports whether real weights are loaded; results from an untrained fallback are tagged `-UNTRAINED`.
+- **Device telemetry:** the browser reports coarse capabilities (cores, rounded RAM, JS heap, network tier) and the inference service reports per-stage latency, memory and GPU usage. Everything is stored per screening in `device_telemetry`.
+- **Dashboard:** `streamlit run dashboard/app.py` shows median / p95 latency, stage breakdown and low-resource device share.
 
+## Testing
 ```bash
 cd server && npm test
 cd client && npm test
 cd inference && python -m pytest tests/ -v
+cd dashboard && python -m pytest tests/ -v
 ```
-
 See [documentation/TESTING.md](documentation/TESTING.md).
 
 ## Documentation
-
 - [Setup instructions](documentation/SETUP_INSTRUCTIONS.md)
 - [ML integration guide](documentation/ML_INTEGRATION_GUIDE.md)
 - [Testing guide](documentation/TESTING.md)
 
 ## Project Status
-
 Current focus: web portal with server-side inference. On-device deployment (TensorFlow Lite / mobile app) is planned future work and is not part of the current codebase.
 
 ## Team
 
 **FAST NUCES, Islamabad** - Final Year Project
 
-| Name          | Roll No. |
-| ------------- | -------- |
-| Usman Haroon  | 22i-1177 |
-| Ayan Asif     | 22i-1097 |
+| Name | Roll No. |
+|---|---|
+| Usman Haroon | 22i-1177 |
+| Ayan Asif | 22i-1097 |
 | Ibrahim Azhar | 22i-0928 |
 
 **Supervisor:** Ma'am Azka Atiq
