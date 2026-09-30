@@ -16,11 +16,13 @@ import pandas as pd
 SLOW_CONNECTIONS = {"slow-2g", "2g", "3g"}
 LOW_RAM_GB = 4  # navigator.deviceMemory is capped/rounded; 4 means "4 GB or less"
 
+# Server pipeline stages only. `audio_processing_ms` is deliberately NOT a stage:
+# the client currently stores the voice-recording *duration* in it (how long the
+# patient spoke), which is not compute time and would dwarf the real stages.
 STAGE_COLUMNS = {
     "Image Prep": "image_preprocess_ms",
     "Inference": "model_inference_ms",
     "Grad-CAM": "gradcam_generation_ms",
-    "Audio Prep": "audio_processing_ms",
 }
 
 

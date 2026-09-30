@@ -30,6 +30,18 @@ def _fresh_streamlit_cache():
     st.cache_resource.clear()
 
 
+@pytest.fixture(autouse=True)
+def _ignore_real_env_file(monkeypatch):
+    """
+    app.py loads server/.env at start-up. On a developer machine that file holds
+    the real DB password and would silently re-populate the variables these tests
+    remove, so the "missing password" test only passed on machines without the
+    file (e.g. CI). Make the tests hermetic by turning load_dotenv into a no-op.
+    """
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
+
+
 def row(i, mem, heap, conn, infer, total, conf=0.8):
     return (i, i, 4, mem, heap, conn, 100, None, 30, infer, 120, total, 10.0, 0.0, "cpu",
             dt.datetime(2026, 9, 30, 10, i), "Eczema", conf, "pending")

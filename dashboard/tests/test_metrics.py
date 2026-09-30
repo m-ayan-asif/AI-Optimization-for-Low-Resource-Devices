@@ -89,10 +89,15 @@ class TestDropFirstRun:
 class TestStageMedians:
     def test_omits_stages_without_data(self):
         df = frame(image_preprocess_ms=[10, 20], model_inference_ms=[100, 200],
-                   gradcam_generation_ms=[50, 70], audio_processing_ms=[None, None])
+                   gradcam_generation_ms=[None, None])
         out = m.stage_medians(df)
-        assert out["Stage"].tolist() == ["Image Prep", "Inference", "Grad-CAM"]
-        assert out["Duration"].tolist() == [15, 150, 60]
+        assert out["Stage"].tolist() == ["Image Prep", "Inference"]
+        assert out["Duration"].tolist() == [15, 150]
+
+    def test_voice_recording_duration_is_not_a_pipeline_stage(self):
+        df = frame(image_preprocess_ms=[10], model_inference_ms=[100],
+                   gradcam_generation_ms=[50], audio_processing_ms=[7000])
+        assert "Audio Prep" not in m.stage_medians(df)["Stage"].tolist()
 
     def test_missing_column_is_tolerated(self):
         assert m.stage_medians(frame(model_inference_ms=[1])).shape[0] == 1
