@@ -21,9 +21,9 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
-# Models & weights (use Git LFS for tracked weights)
-models/
-inference/models/*.pth
+# Models & weights (anchored with leading slash to protect server/src/models)
+/models/
+inference/models/
 
 # Conda
 *.conda
@@ -56,3 +56,4 @@ inference/htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
