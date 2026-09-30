@@ -106,15 +106,19 @@ export default function ScreeningPage() {
       // 1. Run inference and capture the prediction response
       const predictionResponse = await runInference(caseId);
 
-      // 2. Silently ship client-side and server-side telemetry to database
+      // 2. Ship client + server telemetry in the background (never blocks navigation)
       try {
         const clientSpecs = getClientDeviceSpecs();
         const telemetryPayload = {
           ...clientSpecs,
-          audio_processing_ms: duration ? duration * 1000 : 0,
+          // Length of the voice recording in ms (not compute time); null if no voice was submitted
+          audio_processing_ms:
+            !skipVoice && audioBlob && duration ? Math.round(duration * 1000) : null,
           ...(predictionResponse?.telemetry || {}),
         };
-        await api.post(`/monitoring/${caseId}/telemetry`, telemetryPayload);
+        api
+          .post(`/monitoring/${caseId}/telemetry`, telemetryPayload)
+          .catch((e) => console.warn('Telemetry recording skipped:', e.message));
       } catch (telemetryErr) {
         console.warn('Telemetry recording skipped:', telemetryErr.message);
       }
