@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { validateImageFile, validateImageDimensions } from '../utils/imageValidation';
-import { gatherClientMetrics } from '../utils/telemetry';
+import { getClientDeviceSpecs } from '../utils/telemetry';
 import api from '../utils/api';
 import {
   Mic,
@@ -106,10 +106,10 @@ export default function ScreeningPage() {
       await runInference(caseId);
 
       // Asynchronous, unblocking telemetry dispatch
-      const clientMetrics = gatherClientMetrics();
+      const clientMetrics = getClientDeviceSpecs();
       api.post(`/monitoring/${caseId}/telemetry`, clientMetrics).catch((telErr) => {
-        console.warn('Telemetry submission non-fatal warning:', telErr.message);
-      });
+      console.warn('Telemetry submission non-fatal warning:', telErr.message);
+});
 
       navigate(`/results/${caseId}`);
     } catch (_) {
