@@ -1,11 +1,11 @@
-import { getClientDeviceSpecs } from '../utils/telemetry';
-import api from '../utils/api';
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { validateImageFile, validateImageDimensions } from '../utils/imageValidation';
+import { gatherClientMetrics } from '../utils/telemetry';
+import api from '../utils/api';
 import {
   Mic,
   MicOff,
@@ -33,6 +33,7 @@ export default function ScreeningPage() {
     runInference,
     loading,
     error,
+    errorCode,
     setError,
   } = useScreening();
   const {
@@ -86,8 +87,8 @@ export default function ScreeningPage() {
       setCaseId(id);
       await uploadImage(id, imageFile);
       setStep(1);
-    } catch (err) {
-      // Handled in useScreening hook
+    } catch (_) {
+      // Error handled by hook
     }
   }
 
@@ -102,37 +103,33 @@ export default function ScreeningPage() {
         }
       }
       setStep(2);
+      await runInference(caseId);
 
-      // 1. Run inference and capture the prediction response
-      const predictionResponse = await runInference(caseId);
+      // Asynchronous, unblocking telemetry dispatch
+      const clientMetrics = gatherClientMetrics();
+      api.post(`/monitoring/${caseId}/telemetry`, clientMetrics).catch((telErr) => {
+        console.warn('Telemetry submission non-fatal warning:', telErr.message);
+      });
 
-      // 2. Ship client + server telemetry in the background (never blocks navigation)
-      try {
-        const clientSpecs = getClientDeviceSpecs();
-        const telemetryPayload = {
-          ...clientSpecs,
-          // Length of the voice recording in ms (not compute time); null if no voice was submitted
-          audio_processing_ms:
-            !skipVoice && audioBlob && duration ? Math.round(duration * 1000) : null,
-          ...(predictionResponse?.telemetry || {}),
-        };
-        api
-          .post(`/monitoring/${caseId}/telemetry`, telemetryPayload)
-          .catch((e) => console.warn('Telemetry recording skipped:', e.message));
-      } catch (telemetryErr) {
-        console.warn('Telemetry recording skipped:', telemetryErr.message);
-      }
-
-      // 3. Navigate to results page
       navigate(`/results/${caseId}`);
-    } catch (err) {
-      setStep(0); // Bounce back to step 0 if image fails skin validation
+    } catch (_) {
+      // On pre-inference guard failure (e.g. non-skin or blurry), navigate back to upload step
+      setStep(0);
     }
+  }
+
+  function renderErrorMessage() {
+    if (!error) return null;
+    if (errorCode === 'NO_SKIN_DETECTED') return t('errors.noSkinDetected');
+    if (errorCode === 'IMAGE_TOO_BLURRY') return t('errors.imageTooBlurry');
+    if (errorCode === 'FILE_TOO_LARGE') return t('errors.fileTooLarge');
+    if (errorCode === 'EMPTY_FILE') return t('errors.emptyFile');
+    return error;
   }
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Step indicator — a numbered sequence, not a badge cluster */}
+      {/* ── Step Indicator ── */}
       <div className="flex items-center gap-2 mb-7" aria-label={t('screening.title')}>
         {STEPS.map((s, i) => (
           <div key={s} className="flex items-center gap-2 flex-1">
@@ -160,13 +157,11 @@ export default function ScreeningPage() {
       {error && (
         <div className="notice notice-critical mb-5" role="alert">
           <AlertCircle size={18} className="text-conf-critical shrink-0 mt-px" />
-          <span className="text-body">
-            {error.includes('No skin detected') ? t('screening.noSkinError') : error}
-          </span>
+          <span className="text-body">{renderErrorMessage()}</span>
         </div>
       )}
 
-      {/* Step 1: Image Upload */}
+      {/* ── Step 1: Image Upload ── */}
       {step === 0 && (
         <div className="panel panel-body">
           <h2 className="text-h2 text-ink-950 m-0 mb-1">{t('screening.uploadTitle')}</h2>
@@ -232,11 +227,7 @@ export default function ScreeningPage() {
           )}
 
           <div className="flex justify-end mt-7">
-            <button
-              onClick={goToVoice}
-              disabled={!imageFile || loading}
-              className="btn btn-primary"
-            >
+            <button onClick={goToVoice} disabled={!imageFile || loading} className="btn btn-primary">
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               {t('screening.next')} <ArrowRight size={16} />
             </button>
@@ -244,7 +235,7 @@ export default function ScreeningPage() {
         </div>
       )}
 
-      {/* Step 2: Voice + Text Symptoms */}
+      {/* ── Step 2: Voice & Text Symptoms ── */}
       {step === 1 && (
         <div className="panel panel-body">
           <h2 className="text-h2 text-ink-950 m-0 mb-1">{t('screening.voiceTitle')}</h2>
@@ -327,11 +318,7 @@ export default function ScreeningPage() {
               <ArrowLeft size={16} /> {t('screening.back')}
             </button>
             <div className="flex gap-3">
-              <button
-                onClick={() => goToAnalysis(true)}
-                disabled={loading}
-                className="btn btn-secondary"
-              >
+              <button onClick={() => goToAnalysis(true)} disabled={loading} className="btn btn-secondary">
                 <SkipForward size={16} /> {t('screening.voiceSkip')}
               </button>
               <button
@@ -347,7 +334,7 @@ export default function ScreeningPage() {
         </div>
       )}
 
-      {/* Step 3: Analysis loading */}
+      {/* ── Step 3: Analysis Spinner ── */}
       {step === 2 && (
         <div className="panel panel-body text-center py-16">
           <div className="w-12 h-12 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin mx-auto mb-7" />

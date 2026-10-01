@@ -16,13 +16,11 @@ import {
   Stethoscope,
   Mic,
   Info,
+  FlaskConical,
 } from 'lucide-react';
 
 const OUT_OF_SCOPE_THRESHOLD = 0.3;
 const LOW_CONFIDENCE_THRESHOLD = 0.6;
-
-// Tier boundaries, drawn as a scale beneath the confidence gauge so the
-// reading can be judged against the thresholds that produced it.
 const SCALE_TICKS = [30, 60, 80];
 
 export default function ResultsPage() {
@@ -37,9 +35,26 @@ export default function ResultsPage() {
     if (caseId) {
       getResults(caseId)
         .then(setData)
-        .catch((err) => setError(err.response?.data?.error || 'Failed to load'));
+        .catch((err) => setError(err.response?.data?.error || t('common.error')));
     }
-  }, [caseId]);
+  }, [caseId, t]);
+
+  // Loading and Error prioritization: Check error first so failed requests do not hang
+  if (error) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 space-y-4">
+        <div className="notice notice-critical" role="alert">
+          <AlertTriangle size={18} className="text-conf-critical shrink-0 mt-px" />
+          <span className="text-body">{error}</span>
+        </div>
+        <div className="flex justify-center pt-2">
+          <Link to="/screening" className="btn btn-secondary">
+            <Plus size={16} /> {t('results.newScreening')}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !data) {
     return (
@@ -49,14 +64,11 @@ export default function ResultsPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="notice notice-critical max-w-2xl mx-auto" role="alert">
-        <AlertTriangle size={18} className="text-conf-critical shrink-0 mt-px" />
-        <span className="text-body">{error}</span>
-      </div>
-    );
-  }
+  const isMock = Boolean(
+    data.is_mock ||
+    data.model_version?.includes('mock') ||
+    data.model_version?.includes('UNTRAINED')
+  );
 
   const isOutOfScope = (data.confidence_score || 0) <= OUT_OF_SCOPE_THRESHOLD;
   const isLowConfidence = !isOutOfScope && (data.confidence_score || 0) < LOW_CONFIDENCE_THRESHOLD;
@@ -67,20 +79,29 @@ export default function ResultsPage() {
 
   return (
     <div className="max-w-2xl mx-auto pb-6">
-      {/* ── Report masthead ────────────────────────────────────────────── */}
+      {/* ── Mock / Demonstration Warning Banner ── */}
+      {isMock && (
+        <div className="notice notice-caution mb-6">
+          <FlaskConical size={19} className="text-conf-caution shrink-0 mt-0.5" />
+          <div>
+            <h2 className="text-h2 text-ink-950 m-0">{t('results.mockBannerTitle')}</h2>
+            <p className="text-body text-ink-800 m-0 mt-0.5">{t('results.mockBannerDesc')}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Report masthead ── */}
       <header className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4 pb-3 border-b-2 border-ink-950">
         <h1 className="text-h1 text-ink-950 m-0">{t('results.title')}</h1>
-        {data.inference_time_ms && (
+        {data.inference_time_ms ? (
           <span className="flex items-center gap-1.5 text-meta text-ink-500 shrink-0 tnum">
             <Clock size={13} />
             {t('results.inferenceTime')} {data.inference_time_ms} {t('common.ms')}
           </span>
-        )}
+        ) : null}
       </header>
 
-      {/* ── The reading ─────────────────────────────────────────────────
-          Deliberately not a card. It sits on the page behind a rule in its
-          own tier colour, so it outranks every panel below it. */}
+      {/* ── The reading ── */}
       <section
         className="border-s-4 ps-5 mt-7"
         style={{ borderColor: confColor }}
@@ -99,7 +120,6 @@ export default function ResultsPage() {
             </span>
           </div>
 
-          {/* Gauge — square ends, not a pill, so it reads as a measurement */}
           <div className="h-2.5 bg-wash mt-2 overflow-hidden">
             <div
               className="h-full animate-grow"
@@ -126,7 +146,7 @@ export default function ResultsPage() {
         ) : null}
       </section>
 
-      {/* ── Qualifier on the reading ───────────────────────────────────── */}
+      {/* ── Qualifier notices ── */}
       {isOutOfScope ? (
         <div className="notice notice-neutral mt-6">
           <Info size={19} className="text-ink-600 shrink-0 mt-0.5" />
@@ -145,7 +165,7 @@ export default function ResultsPage() {
         </div>
       ) : null}
 
-      {/* ── Grad-CAM heatmap ───────────────────────────────────────────── */}
+      {/* ── Grad-CAM heatmap ── */}
       {data.heatmap_url && (
         <section className="panel mt-6">
           <div className="panel-head">
@@ -167,9 +187,7 @@ export default function ResultsPage() {
                   src={data.heatmap_url}
                   alt="Grad-CAM Heatmap"
                   className="w-full object-contain max-h-96"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                  }}
+                  onError={(e) => { e.target.style.display = 'none'; }}
                 />
               </div>
               <p className="text-meta text-ink-600 mt-3 mb-0">{t('results.heatmapDesc')}</p>
@@ -178,7 +196,7 @@ export default function ResultsPage() {
         </section>
       )}
 
-      {/* ── Full differential ──────────────────────────────────────────── */}
+      {/* ── Full differential ── */}
       <section className="panel mt-6">
         <div className="panel-head">
           <h2 className="label m-0">{t('results.allConditions')}</h2>
@@ -220,7 +238,7 @@ export default function ResultsPage() {
         </div>
       </section>
 
-      {/* ── Reported symptoms ──────────────────────────────────────────── */}
+      {/* ── Reported symptoms ── */}
       {data.transcript_id && (
         <section className="panel mt-6">
           <div className="panel-head">
@@ -265,16 +283,16 @@ export default function ResultsPage() {
         </section>
       )}
 
-      {/* ── Clinician review ───────────────────────────────────────────── */}
+      {/* ── Clinician review card ── */}
       {data.clinician_decision && <ClinicianReviewCard data={data} t={t} />}
 
-      {/* ── Disclaimer — medical text, kept at full body size ──────────── */}
+      {/* ── Medical Disclaimer ── */}
       <div className="notice notice-caution mt-6">
         <AlertTriangle size={19} className="text-conf-caution shrink-0 mt-0.5" />
         <p className="text-body text-ink-950 m-0">{t('results.disclaimer')}</p>
       </div>
 
-      {/* ── Actions ────────────────────────────────────────────────────── */}
+      {/* ── Navigation Actions ── */}
       <div className="flex flex-col sm:flex-row gap-3 mt-7">
         <Link to="/clinics" className="btn btn-primary flex-1">
           <MapPin size={16} /> {t('results.findClinic')}
@@ -332,14 +350,12 @@ function ClinicianReviewCard({ data, t }) {
             <p className="text-h2 text-ink-950 m-0">{data.corrected_diagnosis}</p>
           </div>
         )}
-
         {data.clinician_notes && (
           <div>
             <p className="label m-0 mb-1">{t('results.clinicianNotes')}</p>
             <p className="text-body text-ink-800 m-0">{data.clinician_notes}</p>
           </div>
         )}
-
         <div className="flex items-center gap-1.5 text-meta text-ink-500 pt-3 border-t border-line">
           <Clock size={13} />
           {t('results.reviewedBy')} {data.reviewer_username} ·{' '}
