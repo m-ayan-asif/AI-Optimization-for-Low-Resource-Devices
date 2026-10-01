@@ -3,27 +3,28 @@ SkinSense ML Inference Service
 Loads the distilled MobileNetV3-Large model and exposes a prediction API.
 Called by the Express backend when a screening is submitted.
 """
+import asyncio
 import io
 import os
-import time
-import uuid
 import tempfile
+import time
 import traceback
+import uuid
 from pathlib import Path
 
+import cv2
+import numpy as np
 import psutil
+import soundfile as sf
 import torch
 import torch.nn as nn
 import torch.nn.functional as torchF
 import torchvision.transforms as transforms
-from torchvision import models
-from PIL import Image
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-import numpy as np
-import cv2
-import soundfile as sf
+from fastapi.responses import FileResponse, JSONResponse
+from PIL import Image
+from torchvision import models
 from transformers import pipeline as hf_pipeline
 
 from quality import (
@@ -55,6 +56,7 @@ CLASS_NAMES = [
 
 NUM_CLASSES = len(CLASS_NAMES)
 IMG_SIZE = 224
+
 
 # ── Model Definition ──────────────────────────────────────────────────
 def build_student_large(num_classes=7):
@@ -148,8 +150,10 @@ if os.path.exists(MODEL_PATH):
     print("Model weights loaded successfully.")
 else:
     MODEL_VERSION += "-UNTRAINED"
-    print(f"WARNING: Model file not found at {MODEL_PATH}. Running with RANDOM weights; "
-          "predictions are meaningless and are tagged UNTRAINED.")
+    print(
+        f"WARNING: Model file not found at {MODEL_PATH}. Running with RANDOM weights; "
+        "predictions are meaningless and are tagged UNTRAINED."
+    )
 
 model = model.to(DEVICE)
 model.eval()
@@ -224,9 +228,6 @@ def compute_prediction_entropy(probabilities: torch.Tensor) -> float:
 
 @app.post("/predict")
 async def predict(image: UploadFile = File(...)):
-    # NOTE: this handler is `async def` with no awaits after the upload is read,
-    # so requests run one at a time on the event loop. That is what makes the
-    # per-request RAM delta and GPU peak-memory numbers below trustworthy.
     start_total = time.perf_counter()
     process = psutil.Process()
     ram_before = process.memory_info().rss / (1024 * 1024)
@@ -281,7 +282,7 @@ async def predict(image: UploadFile = File(...)):
         logits = model(input_tensor)
         probabilities = torch.softmax(logits, dim=1)[0]
     if torch.cuda.is_available():
-        torch.cuda.synchronize()  # GPU work is async; wait so the timer is honest
+        torch.cuda.synchronize()
     inference_ms = int((time.perf_counter() - start_infer) * 1000)
 
     all_scores = {name: round(probabilities[i].item(), 4) for i, name in enumerate(CLASS_NAMES)}
@@ -342,17 +343,53 @@ async def predict(image: UploadFile = File(...)):
 
 
 def load_audio_wav(file_path: str, target_sr: int = 16000) -> np.ndarray:
-    data, sr = sf.read(file_path, dtype="float32", always_2d=True)
-    audio = data.mean(axis=1)
-    if sr != target_sr:
+    """
+    Decodes audio from disk into a 1D float32 numpy array resampled to target_sr (16 kHz).
+    Tolerates raw WAV, WebM/Opus, OGG, and MP4 containers via fallback readers.
+    """
+    # Attempt 1: soundfile (fast standard PCM loader)
+    try:
+        data, sr = sf.read(file_path, dtype="float32", always_2d=True)
+        audio = data.mean(axis=1)
+        if sr != target_sr:
+            import librosa
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
+        return audio.astype(np.float32)
+    except Exception:
+        pass
+
+    # Attempt 2: librosa (uses audioread / ffmpeg backend for WebM and compressed audio)
+    try:
         import librosa
-        audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
-    return audio.astype(np.float32)
+        audio, _ = librosa.load(file_path, sr=target_sr, mono=True)
+        return audio.astype(np.float32)
+    except Exception:
+        pass
+
+    # Attempt 3: torchaudio
+    try:
+        import torchaudio
+        waveform, sr = torchaudio.load(file_path)
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        if sr != target_sr:
+            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=target_sr)
+            waveform = resampler(waveform)
+        return waveform.squeeze().cpu().numpy().astype(np.float32)
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        f"Unable to decode audio from {file_path}. Ensure ffmpeg is installed and available in PATH."
+    )
 
 
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
+    print(f"\n[ASR] Incoming request: filename='{audio.filename}', content_type='{audio.content_type}'")
+    
     if asr_pipe is None:
+        print("[ASR] Rejected: asr_pipe is None (model not loaded).")
         return JSONResponse(
             status_code=503,
             content={"error": "ASR model not loaded. Run inference/download_asr_model.py first."},
@@ -360,21 +397,36 @@ async def transcribe(audio: UploadFile = File(...)):
 
     contents = await audio.read()
     if not contents:
+        print("[ASR] Rejected: Empty audio payload received.")
         return JSONResponse(status_code=400, content={"error": "Empty audio file received."})
 
-    suffix = Path(audio.filename).suffix if audio.filename else ".wav"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(contents)
-        tmp_path = tmp.name
+    print(f"[ASR] Audio payload read successfully: {len(contents)} bytes")
 
+    tmp_path = None
     try:
-        audio_array = load_audio_wav(tmp_path)
-        result = asr_pipe(
-            {"array": audio_array, "sampling_rate": 16000},
-            generate_kwargs={"language": "urdu", "task": "transcribe"},
-        )
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
 
-        transcript_text = result["text"].strip()
+        t0 = time.perf_counter()
+        print(f"[ASR] Decoding audio from temporary file '{tmp_path}'...")
+        audio_array = await asyncio.to_thread(load_audio_wav, tmp_path, 16000)
+        print(f"[ASR] Audio decoded. Sample count: {len(audio_array)} ({round(len(audio_array)/16000, 2)}s duration)")
+
+        print("[ASR] Running Whisper pipeline on worker thread...")
+        def _run_pipeline():
+            return asr_pipe(
+                {"array": audio_array, "sampling_rate": 16000},
+                generate_kwargs={"language": "urdu", "task": "transcribe"},
+            )
+
+        result = await asyncio.to_thread(_run_pipeline)
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+        print(f"[ASR] Whisper transcription completed in {elapsed_ms} ms")
+
+        transcript_text = result.get("text", "").strip()
+        print(f"[ASR] Result: \"{transcript_text}\"")
+
         tokens = transcript_text.split()
         keywords = list(dict.fromkeys(t for t in tokens if len(t) > 3))[:10]
 
@@ -383,15 +435,18 @@ async def transcribe(audio: UploadFile = File(...)):
             "language": "ur",
             "confidence_score": 0.90,
             "keywords": keywords,
+            "asr_compute_ms": elapsed_ms,
         }
     except Exception as e:
+        print("[ASR] Exception during transcription:")
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
     finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 @app.get("/heatmaps/{filename}")

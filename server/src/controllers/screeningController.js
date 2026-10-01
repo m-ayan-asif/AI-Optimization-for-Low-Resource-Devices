@@ -388,11 +388,22 @@ async function callASRService(audioPath) {
   const FormData = require('form-data');
   const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
+  // Read file into buffer so form-data sets an exact Content-Length
+  const fileBuffer = fs.readFileSync(absolutePath);
   const formData = new FormData();
-  formData.append('audio', fs.createReadStream(absolutePath));
+  formData.append('audio', fileBuffer, {
+    filename: 'recording.wav',
+    contentType: 'audio/wav',
+  });
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  // Whisper on CPU requires up to 60-90s; set timeout to 120s
+  const timeoutId = setTimeout(() => {
+    console.warn('[callASRService] 120s timeout reached, aborting ASR request');
+    controller.abort();
+  }, 120000);
+
+  console.log(`[callASRService] Sending ${fileBuffer.length} bytes of audio to ${INFERENCE_URL}/transcribe ...`);
 
   try {
     const response = await fetch(`${INFERENCE_URL}/transcribe`, {
@@ -404,10 +415,18 @@ async function callASRService(audioPath) {
 
     if (!response.ok) {
       const errBody = await response.text();
+      console.error(`[callASRService] Python returned ${response.status}:`, errBody);
       throw new Error(`ASR service returned ${response.status}: ${errBody}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('[callASRService] Transcription received:', data.transcript_text);
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('ASR request timed out after 120 seconds');
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }
