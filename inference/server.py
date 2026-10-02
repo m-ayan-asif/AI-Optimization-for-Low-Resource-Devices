@@ -10,6 +10,7 @@ import tempfile
 import time
 import traceback
 import uuid
+import re
 from pathlib import Path
 
 import cv2
@@ -449,11 +450,21 @@ async def transcribe(audio: UploadFile = File(...)):
                 pass
 
 
+HEATMAP_FILENAME_REGEX = re.compile(r"^[0-9a-fA-F\-]{36}\.png$")
+
 @app.get("/heatmaps/{filename}")
 async def get_heatmap(filename: str):
-    path = os.path.join(HEATMAP_DIR, filename)
-    if not os.path.exists(path):
+    # Enforce exact UUID4 filename pattern to eliminate directory traversal
+    if not HEATMAP_FILENAME_REGEX.match(filename):
+        return JSONResponse(status_code=404, content={"error": "Invalid heatmap identifier format"})
+
+    path = os.path.abspath(os.path.join(HEATMAP_DIR, filename))
+    heatmap_dir_abs = os.path.abspath(HEATMAP_DIR)
+
+    # Ensure canonical path stays strictly inside the designated heatmaps folder
+    if not path.startswith(heatmap_dir_abs) or not os.path.exists(path):
         return JSONResponse(status_code=404, content={"error": "Heatmap not found"})
+
     return FileResponse(path, media_type="image/png")
 
 
