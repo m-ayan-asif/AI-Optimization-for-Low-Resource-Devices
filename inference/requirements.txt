@@ -14,3 +14,4 @@ librosa
 av
 open_clip_torch
 sentencepiece
+psutil

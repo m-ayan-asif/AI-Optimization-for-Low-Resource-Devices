@@ -6,7 +6,7 @@
  *  - rateLimiter    → passthrough no-ops (not under test).
  *  - Python inference service (localhost:5001) → NOT mocked deliberately.
  *    Tests that would normally call the Python service instead rely on the
- *    natural ECONNREFUSED to trigger the Express fallback path.  This validates
+ *    natural ECONNREFUSED to trigger the Express fallback path. This validates
  *    the graceful-degradation behaviour without needing a running Python server.
  *
  * Fixtures:
@@ -39,7 +39,8 @@ function makeToken(overrides = {}) {
 
 const PATIENT_TOKEN = makeToken();
 const CASE_ID = 'test-case-uuid-001';
-// A structurally valid 1×1 JPEG (base64-encoded).  Using a real JPEG byte sequence
+
+// A structurally valid 1×1 JPEG (base64-encoded). Using a real JPEG byte sequence
 // ensures multer's file-type check passes — a random buffer would be rejected.
 const MINIMAL_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U' +
@@ -90,8 +91,9 @@ describe('POST /api/screening/create', () => {
 describe('POST /api/screening/:caseId/upload-image', () => {
   it('SUCCESS: uploads a JPEG and returns image_id', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ image_id: 42 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: null }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ image_id: 42 }] }) // insert image
+      .mockResolvedValueOnce({ rows: [] }); // update case
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/upload-image`)
@@ -106,8 +108,9 @@ describe('POST /api/screening/:caseId/upload-image', () => {
   it('SUCCESS: uploads a PNG file', async () => {
     const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     db.query
-      .mockResolvedValueOnce({ rows: [{ image_id: 43 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: null }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ image_id: 43 }] }) // insert image
+      .mockResolvedValueOnce({ rows: [] }); // update case
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/upload-image`)
@@ -146,8 +149,22 @@ describe('POST /api/screening/:caseId/upload-image', () => {
     expect(res.status).toBe(401);
   });
 
+  it('ERROR: returns 403 when trying to upload image to another patient case', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 999 }] }); // different patient
+
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/upload-image`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .attach('image', MINIMAL_JPEG, { filename: 'skin.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/unauthorized/i);
+  });
+
   it('ERROR: returns 500 when the database throws after upload', async () => {
-    db.query.mockRejectedValueOnce(new Error('DB error'));
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockRejectedValueOnce(new Error('DB error')); // insert image throws
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/upload-image`)
@@ -177,12 +194,10 @@ describe('POST /api/screening/:caseId/voice', () => {
   })();
 
   it('SUCCESS: saves transcript with graceful ASR fallback when Python is unreachable', async () => {
-    // The Python service is NOT mocked.  The request to localhost:5001 will receive
-    // ECONNREFUSED, which triggers the fallback path: transcript_text is saved as null
-    // and asr_available is false.  This validates the full graceful-degradation flow.
     db.query
-      .mockResolvedValueOnce({ rows: [{ transcript_id: 7 }] })
-      .mockResolvedValueOnce({ rows: [] }); // UPDATE screening_cases
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ transcript_id: 7 }] }) // insert transcript
+      .mockResolvedValueOnce({ rows: [] }); // update case
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/voice`)
@@ -198,8 +213,9 @@ describe('POST /api/screening/:caseId/voice', () => {
 
   it('SUCCESS: handles audio/webm;codecs=opus MIME type (Chrome default)', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ transcript_id: 8 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ transcript_id: 8 }] }) // insert transcript
+      .mockResolvedValueOnce({ rows: [] }); // update case
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/voice`)
@@ -240,8 +256,23 @@ describe('POST /api/screening/:caseId/voice', () => {
     expect(res.status).toBe(401);
   });
 
+  it('ERROR: returns 403 when submitting voice to another patient case', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 999 }] }); // different patient
+
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/voice`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('language', 'ur')
+      .attach('audio', silentWav, { filename: 'recording.wav', contentType: 'audio/wav' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/unauthorized/i);
+  });
+
   it('ERROR: returns 500 when the database throws after ASR fallback', async () => {
-    db.query.mockRejectedValueOnce(new Error('DB error'));
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockRejectedValueOnce(new Error('DB error')); // insert throws
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/voice`)
@@ -258,13 +289,12 @@ describe('POST /api/screening/:caseId/voice', () => {
 
 describe('POST /api/screening/:caseId/inference', () => {
   it('SUCCESS: falls back to mock prediction when image file path does not exist on disk', async () => {
-    // DB returns a valid row but the file_path points to a missing file on disk.
-    // callInferenceService will fail (fs.createReadStream throws), triggering the
-    // mock-prediction fallback.  model_version contains "mock" to signal this path.
     db.query
-      .mockResolvedValueOnce({ rows: [{ file_path: '/nonexistent/test_image.jpg' }] })
-      .mockResolvedValueOnce({ rows: [{ prediction_id: 55 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: 1 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ file_path: '/nonexistent/test_image.jpg' }] }) // image lookup
+      .mockResolvedValueOnce({ rows: [{ prediction_id: 55 }] }) // insert prediction
+      .mockResolvedValueOnce({ rows: [] }) // device telemetry insert
+      .mockResolvedValueOnce({ rows: [] }); // update case
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/inference`)
@@ -278,7 +308,9 @@ describe('POST /api/screening/:caseId/inference', () => {
   });
 
   it('ERROR: returns 400 when no image is linked to the case', async () => {
-    db.query.mockResolvedValueOnce({ rows: [] }); // no case/image found
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: null }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [] }); // join with images yields no rows
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/inference`)
@@ -289,7 +321,9 @@ describe('POST /api/screening/:caseId/inference', () => {
   });
 
   it('ERROR: returns 400 when the case row exists but image_id is null', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ file_path: null }] });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: null }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ file_path: null }] }); // image lookup has null file_path
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/inference`)
@@ -304,8 +338,21 @@ describe('POST /api/screening/:caseId/inference', () => {
     expect(res.status).toBe(401);
   });
 
+  it('ERROR: returns 403 when running inference on another patient case', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 999 }] }); // different patient
+
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/inference`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/unauthorized/i);
+  });
+
   it('ERROR: returns 500 when the database throws', async () => {
-    db.query.mockRejectedValueOnce(new Error('DB error'));
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: 1 }] }) // ownership check
+      .mockRejectedValueOnce(new Error('DB error')); // image lookup throws
 
     const res = await request(app)
       .post(`/api/screening/${CASE_ID}/inference`)
@@ -331,7 +378,9 @@ describe('GET /api/screening/:caseId/results', () => {
   };
 
   it('SUCCESS: returns case results with prediction data', async () => {
-    db.query.mockResolvedValueOnce({ rows: [mockRow] });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [mockRow] }); // case results query
 
     const res = await request(app)
       .get(`/api/screening/${CASE_ID}/results`)
@@ -344,20 +393,24 @@ describe('GET /api/screening/:caseId/results', () => {
   });
 
   it('SUCCESS: returns heatmap_url when heatmap_path is set', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ ...mockRow, heatmap_path: 'abc123.png' }] });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ ...mockRow, heatmap_path: 'abc123.png' }] }); // case results
 
     const res = await request(app)
       .get(`/api/screening/${CASE_ID}/results`)
       .set('Authorization', `Bearer ${PATIENT_TOKEN}`);
 
     expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('heatmap_url');
     expect(res.body.heatmap_url).toContain('abc123.png');
   });
 
   it('SUCCESS: fetches extracted symptoms when transcript_id is present', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ ...mockRow, transcript_id: 3, transcript_text: 'itching' }] })
-      .mockResolvedValueOnce({ rows: [{ keyword: 'itching', confidence: 0.9 }] });
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ ...mockRow, transcript_id: 3, transcript_text: 'itching' }] }) // case results
+      .mockResolvedValueOnce({ rows: [{ keyword: 'itching', confidence: 0.9 }] }); // symptoms query
 
     const res = await request(app)
       .get(`/api/screening/${CASE_ID}/results`)
@@ -368,7 +421,7 @@ describe('GET /api/screening/:caseId/results', () => {
   });
 
   it('ERROR: returns 404 when the case does not exist or belongs to another patient', async () => {
-    db.query.mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [] }); // case not found
 
     const res = await request(app)
       .get(`/api/screening/nonexistent-case/results`)
@@ -376,6 +429,17 @@ describe('GET /api/screening/:caseId/results', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it('ERROR: returns 403 when accessing another patient results', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 999 }] }); // different patient
+
+    const res = await request(app)
+      .get(`/api/screening/${CASE_ID}/results`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/unauthorized/i);
   });
 
   it('ERROR: returns 401 with no auth token', async () => {

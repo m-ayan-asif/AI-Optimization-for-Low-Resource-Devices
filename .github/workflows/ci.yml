@@ -1,0 +1,128 @@
+name: SkinSense CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # -------------------------------------------------------------
+  # 1. Express Backend Tests (Jest - 107 tests)
+  # -------------------------------------------------------------
+  test-server:
+    name: Server Tests (Jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Jest test suite
+        run: npm test
+
+  # -------------------------------------------------------------
+  # 2. React Frontend Tests (Vitest - 69 tests)
+  # -------------------------------------------------------------
+  test-client:
+    name: Client Tests (Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Vitest in CI mode
+        run: npm test -- --run
+
+  # -------------------------------------------------------------
+  # 3. Python ML Inference Service Tests (pytest - 87 tests)
+  # -------------------------------------------------------------
+  test-inference:
+    name: Inference Service Tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: inference
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: inference/requirements.txt
+
+      - name: Install CPU-only PyTorch (Faster CI downloads)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install service dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov httpx
+
+      - name: Run pytest
+        env:
+          MODEL_PATH: '/nonexistent/model.pth'
+          ASR_MODEL_PATH: '/nonexistent/asr'
+          HEATMAP_DIR: '/tmp/skinsense_heatmaps'
+          INFERENCE_PORT: '5002'
+        run: |
+          python -m pytest tests/ -v
+
+  # -------------------------------------------------------------
+  # 4. Streamlit Monitoring Dashboard Tests (pytest - 25 tests)
+  # -------------------------------------------------------------
+  test-dashboard:
+    name: Dashboard Tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: dashboard/requirements.txt
+
+      - name: Install dashboard dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pandas streamlit
+
+      - name: Run dashboard pytest
+        run: python -m pytest tests/ -v

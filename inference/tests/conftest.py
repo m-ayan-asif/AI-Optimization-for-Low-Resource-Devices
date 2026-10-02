@@ -45,21 +45,56 @@ def client():
     return TestClient(app)
 
 
+def _skin_texture(size=(64, 64), base=(200, 150, 100), seed=0):
+    """
+    Skin-toned image with fine texture.
+
+    Solid-colour images are rejected by the runtime guards (Laplacian variance
+    of a flat image is 0, i.e. "too blurry"), so fixtures need realistic detail
+    while staying inside the HSV + YCrCb skin range.
+    """
+    import numpy as np
+    from PIL import Image
+    rng = np.random.default_rng(seed)
+    noise = rng.normal(0, 12, size=(size[1], size[0], 1))
+    arr = np.clip(np.array(base, dtype=float) + noise, 0, 255).astype("uint8")
+    return Image.fromarray(arr, "RGB")
+
+
 @pytest.fixture(scope="module")
 def png_bytes():
-    """Minimal 1×1 white RGB PNG (67 bytes)."""
-    from PIL import Image
+    """64x64 textured skin-tone PNG that passes the skin and blur guards."""
     buf = io.BytesIO()
-    Image.new("RGB", (10, 10), color=(200, 150, 100)).save(buf, format="PNG")
+    _skin_texture().save(buf, format="PNG")
     return buf.getvalue()
 
 
 @pytest.fixture(scope="module")
 def jpeg_bytes():
-    """Minimal 10×10 JPEG."""
+    """64x64 textured skin-tone JPEG that passes the skin and blur guards."""
+    buf = io.BytesIO()
+    _skin_texture(seed=1).save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+@pytest.fixture(scope="module")
+def blurry_png_bytes():
+    """Skin-tone image with no detail (flat colour): must be rejected as too blurry."""
     from PIL import Image
     buf = io.BytesIO()
-    Image.new("RGB", (10, 10), color=(100, 150, 200)).save(buf, format="JPEG")
+    Image.new("RGB", (64, 64), color=(200, 150, 100)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture(scope="module")
+def non_skin_png_bytes():
+    """Textured blue image: must be rejected as containing no skin."""
+    import numpy as np
+    from PIL import Image
+    rng = np.random.default_rng(3)
+    arr = np.clip(np.array([30, 60, 200], dtype=float) + rng.normal(0, 12, (64, 64, 1)), 0, 255).astype("uint8")
+    buf = io.BytesIO()
+    Image.fromarray(arr, "RGB").save(buf, format="PNG")
     return buf.getvalue()
 
 
@@ -86,3 +121,5 @@ def wav_bytes():
     buf.write(struct.pack("<I", data_size))
     buf.write(b"\x00" * data_size)
     return buf.getvalue()
+
+

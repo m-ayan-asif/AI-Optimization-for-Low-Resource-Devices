@@ -59,9 +59,13 @@ export function getConfidenceLevel(score) {
   return 'out_of_scope';
 }
 
+// Confidence semantics. These must stay in step with the --color-conf-*
+// tokens and the .confidence-* classes in index.css. Each value meets WCAG AA
+// as text on white and on its own tint; the 'no reading' tier is neutral
+// rather than branded, because a sub-threshold score is an absence of signal.
 export function getConfidenceColor(score) {
-  if (score >= 0.8) return '#16a34a';
-  if (score >= 0.6) return '#d97706';
-  if (score >= 0.3) return '#dc2626';
-  return '#9333ea';
+  if (score >= 0.8) return '#0f7a43';
+  if (score >= 0.6) return '#a15c00';
+  if (score >= 0.3) return '#b3261e';
+  return '#4a4356';
 }

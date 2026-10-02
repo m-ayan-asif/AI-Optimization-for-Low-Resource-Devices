@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const screeningRoutes = require('./routes/screening');
 const clinicRoutes = require('./routes/clinics');
 const clinicianRoutes = require('./routes/clinicianRoutes');
+const monitoringRoutes = require('./routes/monitoring');
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/screening', screeningRoutes);
 app.use('/api/clinics', clinicRoutes);
 app.use('/api/clinician', clinicianRoutes);
+app.use('/api/monitoring', monitoringRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

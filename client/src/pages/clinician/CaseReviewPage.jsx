@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useClinician } from '../../hooks/useClinician';
-import { getConfidenceLevel, getConfidenceColor } from '../../utils/imageValidation';
+import { getConfidenceColor } from '../../utils/imageValidation';
 import {
   ArrowLeft, Eye, EyeOff, User, FileText, Clock, CheckCircle2,
   AlertTriangle, XCircle, PenLine, ShieldAlert, AlertCircle, Mic, Type
 } from 'lucide-react';
 
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
+// Tier boundaries, drawn beneath the confidence gauge — matches ResultsPage
+// so the reading is legible the same way on both sides of a review.
+const SCALE_TICKS = [30, 60, 80];
 
 export default function CaseReviewPage() {
   const { t } = useTranslation();
@@ -74,43 +78,39 @@ export default function CaseReviewPage() {
   if (loading && !data) {
     return (
       <div className="flex justify-center py-24">
-        <div className="w-10 h-10 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+        <div className="w-10 h-10 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 text-red-600 p-6 rounded-2xl text-center border border-red-100">{error}</div>
+      <div className="notice notice-critical max-w-2xl mx-auto" role="alert">
+        <AlertTriangle size={18} className="text-conf-critical shrink-0 mt-px" />
+        <span className="text-body">{error}</span>
+      </div>
     );
   }
 
   if (!data) return null;
 
   const isLowConfidence = data.confidence_score < LOW_CONFIDENCE_THRESHOLD;
-  const level = getConfidenceLevel(data.confidence_score);
+  const confColor = getConfidenceColor(data.confidence_score);
+  const confPercent = (data.confidence_score * 100).toFixed(0);
   const allScores = data.all_scores || {};
   const sortedConditions = Object.entries(allScores).sort((a, b) => b[1] - a[1]);
 
   if (submitted) {
     return (
       <div className="max-w-2xl mx-auto text-center py-16 space-y-4">
-        <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto">
-          <CheckCircle2 size={32} className="text-green-500" />
-        </div>
-        <h2 className="text-xl font-bold text-gray-900">{t('clinician.feedback.submitted')}</h2>
-        <p className="text-gray-500 text-sm">{t('clinician.feedback.submittedDesc')}</p>
+        <CheckCircle2 size={36} className="text-conf-good mx-auto" />
+        <h2 className="text-h1 text-ink-950 m-0">{t('clinician.feedback.submitted')}</h2>
+        <p className="text-body text-ink-600 m-0">{t('clinician.feedback.submittedDesc')}</p>
         <div className="flex gap-3 justify-center pt-2">
-          <button
-            onClick={() => navigate('/clinician/dashboard')}
-            className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors cursor-pointer border-none"
-          >
+          <button onClick={() => navigate('/clinician/dashboard')} className="btn btn-primary">
             {t('clinician.dashboard.title')}
           </button>
-          <button
-            onClick={() => navigate('/clinician/history')}
-            className="px-5 py-2.5 bg-white text-gray-600 border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
-          >
+          <button onClick={() => navigate('/clinician/history')} className="btn btn-secondary">
             {t('clinician.history.title')}
           </button>
         </div>
@@ -121,102 +121,116 @@ export default function CaseReviewPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Back link + title */}
-      <div className="flex items-center gap-3">
+      <header className="flex items-center gap-3 pb-3 border-b-2 border-ink-950">
         <Link
           to="/clinician/dashboard"
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors no-underline"
+          aria-label={t('screening.back')}
+          className="p-1.5 -ms-1.5 rounded-control text-ink-500 hover:text-ink-950 hover:bg-wash transition-colors no-underline"
         >
           <ArrowLeft size={18} />
         </Link>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-            <FileText size={20} className="text-purple-500" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{t('clinician.cases.reviewTitle')}</h1>
-            <p className="text-xs text-gray-400">{t('clinician.cases.caseId')}: {caseId}</p>
-          </div>
+        <FileText size={19} className="text-ink-600 shrink-0" />
+        <div className="min-w-0">
+          <h1 className="text-h1 text-ink-950 m-0">{t('clinician.cases.reviewTitle')}</h1>
+          <p className="text-meta text-ink-500 m-0 tnum">{t('clinician.cases.caseId')}: {caseId}</p>
         </div>
-      </div>
+      </header>
 
       {/* Patient info */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-4">
-          <User size={16} className="text-purple-500" />
-          <h3 className="font-semibold text-gray-900">{t('clinician.cases.patientInfo')}</h3>
+      <div className="panel">
+        <div className="panel-head">
+          <h2 className="label m-0 flex items-center gap-2">
+            <User size={14} className="text-ink-600" />
+            {t('clinician.cases.patientInfo')}
+          </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <InfoItem label={t('clinician.cases.username')} value={data.patient_username} />
-          <InfoItem label={t('auth.age')} value={data.age || '—'} />
-          <InfoItem label={t('auth.gender')} value={data.gender ? t(`auth.${data.gender.toLowerCase()}`) : '—'} />
-          <InfoItem label={t('auth.region')} value={data.region || '—'} />
-        </div>
-        <div className="flex items-center gap-1.5 text-xs text-gray-300 mt-4 pt-4 border-t border-gray-50">
-          <Clock size={12} />
-          {t('clinician.cases.submitted')}: {new Date(data.created_at).toLocaleString()}
+        <div className="panel-body">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <InfoItem label={t('clinician.cases.username')} value={data.patient_username} />
+            <InfoItem label={t('auth.age')} value={data.age || '—'} />
+            <InfoItem label={t('auth.gender')} value={data.gender ? t(`auth.${data.gender.toLowerCase()}`) : '—'} />
+            <InfoItem label={t('auth.region')} value={data.region || '—'} />
+          </div>
+          <div className="flex items-center gap-1.5 text-meta text-ink-500 mt-4 pt-4 border-t border-line">
+            <Clock size={13} />
+            {t('clinician.cases.submitted')}: {new Date(data.created_at).toLocaleString()}
+          </div>
         </div>
       </div>
 
       {/* Low confidence warning */}
       {isLowConfidence && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex gap-4">
-          <ShieldAlert size={22} className="text-red-500 shrink-0 mt-0.5" />
+        <div className="notice notice-critical">
+          <ShieldAlert size={19} className="text-conf-critical shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-red-800 mb-1">{t('results.unidentified')}</h3>
-            <p className="text-sm text-red-700 leading-relaxed">{t('results.unidentifiedDesc')}</p>
+            <h2 className="text-h2 text-ink-950 m-0">{t('results.unidentified')}</h2>
+            <p className="text-body text-ink-800 m-0 mt-1">{t('results.unidentifiedDesc')}</p>
           </div>
         </div>
       )}
 
-      {/* Top condition */}
-      <div className={`bg-white rounded-2xl border p-7 shadow-sm ${isLowConfidence ? 'border-red-200 opacity-80' : 'border-purple-100'}`}>
-        <div className="text-sm text-gray-400 font-medium uppercase tracking-wide mb-1">{t('results.topCondition')}</div>
-        <div className="text-2xl font-bold text-gray-900 mb-4">
+      {/* The reading — same treatment as the patient-facing results screen */}
+      <section
+        className="border-s-4 ps-5"
+        style={{ borderColor: confColor }}
+        aria-label={t('results.topCondition')}
+      >
+        <p className="label m-0">{t('results.topCondition')}</p>
+        <p className="text-display text-ink-950 m-0 mt-2">
           {isLowConfidence ? t('results.inconclusive') : (data.top_condition || '—')}
-        </div>
+        </p>
 
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-400 w-20">{t('results.confidence')}</div>
-          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+        <div className="mt-6">
+          <div className="flex items-end justify-between gap-4">
+            <span className="label m-0">{t('results.confidence')}</span>
+            <span className="text-metric tnum" style={{ color: confColor }}>
+              {confPercent}%
+            </span>
+          </div>
+          <div className="h-2.5 bg-wash mt-2 overflow-hidden">
             <div
-              className="h-full rounded-full animate-grow"
-              style={{
-                width: `${(data.confidence_score * 100).toFixed(0)}%`,
-                backgroundColor: getConfidenceColor(data.confidence_score),
-              }}
+              className="h-full animate-grow"
+              style={{ width: `${confPercent}%`, backgroundColor: confColor }}
             />
           </div>
-          <span className={`text-lg font-bold confidence-${level} px-3 py-1 rounded-full`}>
-            {(data.confidence_score * 100).toFixed(0)}%
-          </span>
+          <div className="relative h-1.5" aria-hidden="true">
+            {SCALE_TICKS.map((p) => (
+              <span
+                key={p}
+                className="absolute top-0 w-px h-1.5 bg-line-strong"
+                style={{ insetInlineStart: `${p}%` }}
+              />
+            ))}
+          </div>
         </div>
 
         {data.inference_time_ms && (
-          <div className="flex items-center gap-1.5 text-sm text-gray-300 mt-4 pt-4 border-t border-gray-50">
-            <Clock size={14} />
+          <div className="flex items-center gap-1.5 text-meta text-ink-500 mt-4">
+            <Clock size={13} />
             {t('results.inferenceTime')} {data.inference_time_ms} {t('common.ms')}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Grad-CAM heatmap */}
       {data.heatmap_url && (
-        <div className="bg-white rounded-2xl border border-purple-100 p-7 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Eye size={18} className="text-purple-500" />
+        <div className="panel">
+          <div className="panel-head">
+            <h2 className="label m-0 flex items-center gap-2">
+              <Eye size={14} className="text-ink-600" />
               {t('results.heatmap')}
-            </h3>
+            </h2>
             <button
               onClick={() => setShowHeatmap(!showHeatmap)}
-              className="text-sm text-purple-600 font-medium cursor-pointer bg-transparent border-none hover:text-purple-700"
+              aria-label={t('results.heatmap')}
+              className="text-brand-600 hover:text-brand-800 cursor-pointer bg-transparent border-none p-0"
             >
               {showHeatmap ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
           {showHeatmap && (
-            <>
-              <div className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
+            <div className="panel-body">
+              <div className="rounded-frame overflow-hidden border border-line-strong bg-wash">
                 <img
                   src={data.heatmap_url}
                   alt="Grad-CAM Heatmap"
@@ -224,98 +238,126 @@ export default function CaseReviewPage() {
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
               </div>
-              <p className="text-sm text-gray-400 mt-3">{t('results.heatmapDesc')}</p>
-            </>
+              <p className="text-meta text-ink-600 mt-3 mb-0">{t('results.heatmapDesc')}</p>
+            </div>
           )}
         </div>
       )}
 
       {/* All conditions breakdown */}
       {sortedConditions.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-7">
-          <h3 className="font-semibold text-gray-900 mb-5">{t('results.allConditions')}</h3>
-          <div className="space-y-3.5">
-            {sortedConditions.map(([condition, score], i) => (
-              <div key={condition} className="flex items-center gap-4">
-                <span className={`text-sm w-44 shrink-0 ${i === 0 && !isLowConfidence ? 'font-semibold text-purple-700' : 'text-gray-600'}`}>
-                  {condition}
-                </span>
-                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full animate-grow ${i === 0 && !isLowConfidence ? 'bg-purple-500' : 'bg-purple-200'}`}
-                    style={{ width: `${(score * 100).toFixed(0)}%` }}
-                  />
+        <div className="panel">
+          <div className="panel-head">
+            <h2 className="label m-0">{t('results.allConditions')}</h2>
+          </div>
+          <div>
+            {sortedConditions.map(([condition, score], i) => {
+              const isTop = i === 0 && !isLowConfidence;
+              return (
+                <div
+                  key={condition}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 border-b border-line last:border-b-0"
+                >
+                  <span
+                    className={`text-body flex-1 min-w-0 sm:flex-none sm:w-44 ${
+                      isTop ? 'font-semibold text-ink-950' : 'text-ink-600'
+                    }`}
+                  >
+                    {condition}
+                  </span>
+                  <span
+                    className={`text-meta w-11 text-end tnum order-2 sm:order-none ${
+                      isTop ? 'font-semibold text-ink-950' : 'text-ink-500'
+                    }`}
+                  >
+                    {(score * 100).toFixed(0)}%
+                  </span>
+                  <div className="w-full order-3 sm:order-none sm:w-auto sm:flex-1 h-1.5 bg-wash overflow-hidden">
+                    <div
+                      className="h-full animate-grow"
+                      style={{
+                        width: `${(score * 100).toFixed(0)}%`,
+                        backgroundColor: isTop ? confColor : 'var(--color-line-strong)',
+                      }}
+                    />
+                  </div>
                 </div>
-                <span className={`text-sm w-12 text-right font-medium ${i === 0 && !isLowConfidence ? 'text-purple-600' : 'text-gray-400'}`}>
-                  {(score * 100).toFixed(0)}%
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Voice / text transcript */}
       {data.transcript_id && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-7">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+        <div className="panel">
+          <div className="panel-head">
+            <h2 className="label m-0 flex items-center gap-2">
               {data.transcript_audio_path
-                ? <Mic size={18} className="text-purple-500" />
-                : <Type size={18} className="text-purple-500" />}
+                ? <Mic size={14} className="text-ink-600" />
+                : <Type size={14} className="text-ink-600" />}
               {data.transcript_audio_path ? 'Patient Voice Description' : 'Patient Written Description'}
-            </h3>
-            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
+            </h2>
+            <span className="text-label font-semibold text-ink-600 bg-wash rounded-control px-2.5 py-1">
               {data.transcript_language === 'ur' ? 'Urdu' : 'English'}
             </span>
           </div>
 
-          {data.transcript_text ? (
-            <p className="text-sm text-gray-700 leading-relaxed italic bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-              "{data.transcript_text}"
-            </p>
-          ) : (
-            <p className="text-sm text-gray-400 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-              Audio recorded — transcription not yet available. Run <code className="font-mono text-xs bg-gray-200 px-1 rounded">download_asr_model.py</code> to enable Whisper transcription.
-            </p>
-          )}
+          <div className="panel-body">
+            {data.transcript_text ? (
+              <p className="inset text-body text-ink-950 px-4 py-3 m-0">
+                "{data.transcript_text}"
+              </p>
+            ) : (
+              <p className="inset text-body text-ink-600 px-4 py-3 m-0">
+                Audio recorded — transcription not yet available. Run{' '}
+                <code className="font-mono text-meta bg-line rounded-frame px-1">download_asr_model.py</code>{' '}
+                to enable Whisper transcription.
+              </p>
+            )}
 
-          {data.symptoms && data.symptoms.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-50">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2.5">Extracted Keywords</p>
-              <div className="flex flex-wrap gap-2">
-                {data.symptoms.map((s, i) => (
-                  <span key={i} className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">
-                    {s.keyword}
-                  </span>
-                ))}
+            {data.symptoms && data.symptoms.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-line">
+                <p className="label m-0 mb-2.5">Extracted Keywords</p>
+                <div className="flex flex-wrap gap-2">
+                  {data.symptoms.map((s, i) => (
+                    <span
+                      key={i}
+                      className="text-meta font-semibold text-ink-800 bg-wash border border-line-strong rounded-control px-2.5 py-1"
+                    >
+                      {s.keyword}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
       {/* Existing feedback indicator */}
       {data.decision && !submitted && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center gap-3">
-          <AlertCircle size={18} className="text-blue-500 shrink-0" />
-          <p className="text-sm text-blue-800">
+        <div className="notice notice-info">
+          <AlertCircle size={18} className="text-info shrink-0 mt-px" />
+          <p className="text-body text-ink-950 m-0">
             {t('clinician.feedback.alreadyReviewed', { reviewer: data.reviewer_username || t('clinician.feedback.you') })}
           </p>
         </div>
       )}
 
       {/* Feedback form */}
-      <div className="bg-white rounded-2xl border border-purple-100 p-7 shadow-sm">
-        <div className="flex items-center gap-2 mb-6">
-          <PenLine size={18} className="text-purple-500" />
-          <h3 className="font-semibold text-gray-900">{t('clinician.feedback.title')}</h3>
+      <div className="panel">
+        <div className="panel-head">
+          <h2 className="label m-0 flex items-center gap-2">
+            <PenLine size={14} className="text-ink-600" />
+            {t('clinician.feedback.title')}
+          </h2>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="panel-body space-y-5">
           {/* Decision buttons */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-3">{t('clinician.feedback.decision')}</label>
+            <label className="label mb-3">{t('clinician.feedback.decision')}</label>
             <div className="grid grid-cols-3 gap-3">
               <DecisionButton
                 value="accept"
@@ -323,7 +365,7 @@ export default function CaseReviewPage() {
                 onClick={() => setDecision('accept')}
                 icon={<CheckCircle2 size={16} />}
                 label={t('clinician.feedback.accept')}
-                activeClass="border-green-500 bg-green-50 text-green-700"
+                activeClass="border-conf-good bg-conf-good-tint text-conf-good"
               />
               <DecisionButton
                 value="dispute"
@@ -331,7 +373,7 @@ export default function CaseReviewPage() {
                 onClick={() => setDecision('dispute')}
                 icon={<XCircle size={16} />}
                 label={t('clinician.feedback.dispute')}
-                activeClass="border-amber-500 bg-amber-50 text-amber-700"
+                activeClass="border-conf-caution bg-conf-caution-tint text-conf-caution"
               />
               <DecisionButton
                 value="correct"
@@ -339,7 +381,7 @@ export default function CaseReviewPage() {
                 onClick={() => setDecision('correct')}
                 icon={<PenLine size={16} />}
                 label={t('clinician.feedback.correct')}
-                activeClass="border-blue-500 bg-blue-50 text-blue-700"
+                activeClass="border-info bg-info-tint text-info"
               />
             </div>
           </div>
@@ -347,48 +389,44 @@ export default function CaseReviewPage() {
           {/* Corrected diagnosis — only show when decision is 'correct' */}
           {decision === 'correct' && (
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">
-                {t('clinician.feedback.correctedDiagnosis')} <span className="text-red-500">*</span>
+              <label className="label mb-2">
+                {t('clinician.feedback.correctedDiagnosis')} <span className="text-conf-critical">*</span>
               </label>
               <input
                 type="text"
                 value={correctedDiagnosis}
                 onChange={(e) => setCorrectedDiagnosis(e.target.value)}
                 placeholder={t('clinician.feedback.correctedDiagnosisPlaceholder')}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300"
+                className="field"
               />
             </div>
           )}
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1.5">
+            <label className="label mb-2">
               {t('clinician.feedback.notes')}
-              <span className="text-gray-400 font-normal ml-1">({t('common.optional')})</span>
+              <span className="text-ink-500 font-normal normal-case ms-1">({t('common.optional')})</span>
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t('clinician.feedback.notesPlaceholder')}
               rows={3}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300 resize-none"
+              className="field resize-none"
             />
           </div>
 
           {submitError && (
-            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl border border-red-100 flex items-center gap-2">
-              <AlertTriangle size={15} className="shrink-0" />
-              <span>{submitError}</span>
+            <div className="notice notice-critical">
+              <AlertTriangle size={16} className="text-conf-critical shrink-0 mt-px" />
+              <span className="text-body">{submitError}</span>
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting || !decision}
-            className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-50 cursor-pointer text-sm shadow-md shadow-purple-200 flex items-center justify-center gap-2 border-none"
-          >
+          <button type="submit" disabled={submitting || !decision} className="btn btn-primary w-full">
             {submitting ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="w-[18px] h-[18px] border-2 border-white/35 border-t-white rounded-pill animate-spin" />
             ) : (
               t('clinician.feedback.submit')
             )}
@@ -402,8 +440,8 @@ export default function CaseReviewPage() {
 function InfoItem({ label, value }) {
   return (
     <div>
-      <div className="text-xs text-gray-400 font-medium mb-0.5">{label}</div>
-      <div className="text-sm text-gray-800 font-medium">{value || '—'}</div>
+      <div className="label mb-1">{label}</div>
+      <div className="text-body font-semibold text-ink-950">{value || '—'}</div>
     </div>
   );
 }
@@ -414,8 +452,9 @@ function DecisionButton({ value, current, onClick, icon, label, activeClass }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-sm font-semibold transition-all cursor-pointer bg-white ${
-        isActive ? activeClass : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+      aria-pressed={isActive}
+      className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-control border-2 text-body font-semibold cursor-pointer transition-colors bg-surface ${
+        isActive ? activeClass : 'border-line-strong text-ink-600 hover:border-ink-300'
       }`}
     >
       {icon}

@@ -21,6 +21,14 @@ jest.mock('../src/middleware/rateLimiter', () => ({
   apiLimiter: (req, res, next) => next(),
   strictLimiter: (req, res, next) => next(),
 }));
+// registration validates the e-mail domain over DNS; mock it so the suite is
+// deterministic and passes offline (CI, airplane mode, restricted networks).
+jest.mock('dns', () => ({
+  promises: {
+    resolveMx: jest.fn().mockResolvedValue([{ exchange: 'mx.test.local', priority: 10 }]),
+    resolve: jest.fn().mockResolvedValue(['127.0.0.1']),
+  },
+}));
 jest.mock('bcryptjs', () => ({
   hash: jest.fn().mockResolvedValue('$2b$12$mockedhash'),
   compare: jest.fn(),
@@ -89,7 +97,7 @@ describe('POST /api/auth/register', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'dr_sara', email: 'sara@clinic.com', password: 'securepass', role: 'clinician' });
+      .send({ username: 'dr_sara', email: 'sara@clinic.com', password: 'securepass', role: 'clinician', age: 40, gender: 'F', region: 'Islamabad' });
 
     expect(res.status).toBe(201);
     expect(res.body.user.role).toBe('clinician');
@@ -97,7 +105,8 @@ describe('POST /api/auth/register', () => {
   });
 
   it('SUCCESS: registers a clinician with minimal required fields only', async () => {
-    // Clinicians do not require age/gender/region, so only 4 queries run:
+    // Age, gender and region are required for every role (see authController),
+    // so "minimal" means: no optional clinician fields. 4 queries run:
     // duplicate check, users INSERT, clinician_profiles INSERT, audit_logs INSERT.
     db.query
       .mockResolvedValueOnce({ rows: [] })
@@ -107,7 +116,7 @@ describe('POST /api/auth/register', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ username: 'dr_min', email: 'dr_min@test.com', password: 'pass123', role: 'clinician' });
+      .send({ username: 'dr_min', email: 'dr_min@test.com', password: 'pass123', role: 'clinician', age: 35, gender: 'M', region: 'Lahore' });
 
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('token');
@@ -423,3 +432,5 @@ describe('GET /api/auth/profile', () => {
     expect(res.body.error).toMatch(/failed to fetch profile/i);
   });
 });
+
+

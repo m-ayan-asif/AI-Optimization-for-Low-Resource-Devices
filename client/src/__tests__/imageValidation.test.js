@@ -4,7 +4,8 @@
  * Four pure functions are tested:
  *  - validateImageFile(file)       → synchronous; checks MIME type and file size.
  *  - validateImageDimensions(file) → async; checks pixel dimensions via Image().
- *  - getConfidenceLevel(score)     → maps a float to 'high' / 'medium' / 'low'.
+ *  - getConfidenceLevel(score)     → maps a float to 'high' / 'medium' / 'low' /
+ *                                    'out_of_scope'.
  *  - getConfidenceColor(score)     → maps a float to a CSS hex colour string.
  *
  * Dimension tests:
@@ -187,10 +188,15 @@ describe('getConfidenceLevel()', () => {
     expect(getConfidenceLevel(0.79)).toBe('medium');
   });
 
-  it("returns 'low' for score < 0.6", () => {
-    expect(getConfidenceLevel(0.0)).toBe('low');
+  it("returns 'low' for score >= 0.3 and < 0.6", () => {
     expect(getConfidenceLevel(0.59)).toBe('low');
+    expect(getConfidenceLevel(0.45)).toBe('low');
     expect(getConfidenceLevel(0.3)).toBe('low');
+  });
+
+  it("returns 'out_of_scope' for score < 0.3", () => {
+    expect(getConfidenceLevel(0.0)).toBe('out_of_scope');
+    expect(getConfidenceLevel(0.29)).toBe('out_of_scope');
   });
 
   it('EDGE: exactly 0.8 is high (inclusive boundary)', () => {
@@ -200,29 +206,40 @@ describe('getConfidenceLevel()', () => {
   it('EDGE: exactly 0.6 is medium (inclusive boundary)', () => {
     expect(getConfidenceLevel(0.6)).toBe('medium');
   });
+
+  it('EDGE: exactly 0.3 is low (inclusive boundary)', () => {
+    expect(getConfidenceLevel(0.3)).toBe('low');
+    expect(getConfidenceLevel(0.299)).toBe('out_of_scope');
+  });
 });
 
 // ─── getConfidenceColor ───────────────────────────────────────────────────────
 
 describe('getConfidenceColor()', () => {
-  it('returns green (#16a34a) for high confidence (>= 0.8)', () => {
-    expect(getConfidenceColor(0.8)).toBe('#16a34a');
-    expect(getConfidenceColor(1.0)).toBe('#16a34a');
+  it('returns green (#0f7a43) for high confidence (>= 0.8)', () => {
+    expect(getConfidenceColor(0.8)).toBe('#0f7a43');
+    expect(getConfidenceColor(1.0)).toBe('#0f7a43');
   });
 
-  it('returns amber (#d97706) for medium confidence (>= 0.6, < 0.8)', () => {
-    expect(getConfidenceColor(0.6)).toBe('#d97706');
-    expect(getConfidenceColor(0.75)).toBe('#d97706');
-    expect(getConfidenceColor(0.79)).toBe('#d97706');
+  it('returns amber (#a15c00) for medium confidence (>= 0.6, < 0.8)', () => {
+    expect(getConfidenceColor(0.6)).toBe('#a15c00');
+    expect(getConfidenceColor(0.75)).toBe('#a15c00');
+    expect(getConfidenceColor(0.79)).toBe('#a15c00');
   });
 
-  it('returns red (#dc2626) for low confidence (< 0.6)', () => {
-    expect(getConfidenceColor(0.0)).toBe('#dc2626');
-    expect(getConfidenceColor(0.59)).toBe('#dc2626');
+  it('returns red (#b3261e) for low confidence (>= 0.3, < 0.6)', () => {
+    expect(getConfidenceColor(0.3)).toBe('#b3261e');
+    expect(getConfidenceColor(0.59)).toBe('#b3261e');
+  });
+
+  it('returns neutral ink (#4a4356) for out-of-scope scores (< 0.3)', () => {
+    expect(getConfidenceColor(0.0)).toBe('#4a4356');
+    expect(getConfidenceColor(0.29)).toBe('#4a4356');
   });
 
   it('EDGE: boundary values match expected colors', () => {
-    expect(getConfidenceColor(0.8)).toBe('#16a34a');
-    expect(getConfidenceColor(0.6)).toBe('#d97706');
+    expect(getConfidenceColor(0.8)).toBe('#0f7a43');
+    expect(getConfidenceColor(0.6)).toBe('#a15c00');
+    expect(getConfidenceColor(0.3)).toBe('#b3261e');
   });
 });

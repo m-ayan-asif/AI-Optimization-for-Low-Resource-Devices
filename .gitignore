@@ -2,17 +2,58 @@
 data/raw/
 data/processed/
 
+# Secrets / environment (protect all env files, keep example)
+.env
+.env.*
+server/.env
+inference/.env
+!.env.example
+!server/.env.example
+
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
-.env
+.venv/
+venv/
+env/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Models
-models/
+# Models & weights (anchored with leading slash to protect server/src/models)
+/models/
+inference/models/
 
 # Conda
 *.conda
+
+# Node
+node_modules/
+client/dist/
+npm-debug.log*
+
+# Patient data generated at runtime (uploads, voice, Grad-CAM overlays)
+uploads/
+server/uploads/
+heatmaps/
+inference/heatmaps/
+
+# Test / coverage artifacts
+coverage/
+server/coverage/
+client/coverage/
+htmlcov/
+inference/htmlcov/
+.coverage
+.pytest_cache/
+
+# Logs
+*.log
+
+# Editors & OS artifacts
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

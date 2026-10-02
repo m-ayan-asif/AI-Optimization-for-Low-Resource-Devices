@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { REGIONS } from '../utils/constants';
-import { Eye, EyeOff, ArrowRight, User, Stethoscope, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, User, Stethoscope, AlertCircle } from 'lucide-react';
 
 const KNOWN_EMAIL_DOMAINS = [
   'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com',
@@ -122,122 +122,202 @@ export default function RegisterPage() {
     }
   }
 
-  const inputClass = "w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400 transition-all bg-gray-50/50 placeholder-gray-300";
-  const labelClass = "block text-sm font-medium text-gray-600 mb-1.5";
-
   return (
-    <div className="min-h-screen auth-gradient flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <img src="/src/assets/logo.png" alt="SkinSense" className="w-20 h-20 mx-auto mb-5 object-contain" />
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{t('app.name')}</h1>
-        </div>
+    <div className="min-h-screen bg-paper flex flex-col">
+      {/* Chassis edge — echoes the app header, marks the top of the instrument */}
+      <div className="h-1 bg-brand-800 shrink-0" />
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-purple-100/50 border border-purple-100/60 p-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">{t('auth.register')}</h2>
+      <div className="flex-1 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[30rem]">
+          {/* Identity */}
+          <div className="flex items-center gap-3 mb-7">
+            <img
+              src="/src/assets/logo.png"
+              alt=""
+              className="w-12 h-12 object-contain shrink-0"
+            />
+            <h1 className="text-h1 text-ink-950 m-0">{t('app.name')}</h1>
+          </div>
 
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-5 border border-red-100 flex items-center gap-2">
-              <AlertCircle size={16} className="shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Role selector */}
-            <div>
-              <label className={labelClass}>{t('auth.role')}</label>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { value: 'patient', label: t('auth.rolePatient'), icon: User },
-                  { value: 'clinician', label: t('auth.roleHealthworker'), icon: Stethoscope },
-                ].map(({ value, label, icon: Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => updateForm('role', value)}
-                    className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium border-2 transition-all cursor-pointer ${
-                      form.role === value
-                        ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm shadow-purple-100'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    <Icon size={16} />
-                    {label}
-                  </button>
-                ))}
-              </div>
+          {/* Record panel */}
+          <div className="panel">
+            <div className="panel-head">
+              <h2 className="label m-0">{t('auth.register')}</h2>
             </div>
 
-            <div>
-              <label className={labelClass}>{t('auth.username')}</label>
-              <input type="text" value={form.username} onChange={(e) => updateForm('username', e.target.value)} className={inputClass} placeholder={t('auth.usernamePlaceholder')} autoComplete="username" />
-            </div>
-
-            <div>
-              <label className={labelClass}>{t('auth.email')}</label>
-              <input type="email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} className={inputClass} placeholder={t('auth.emailPlaceholder')} autoComplete="email" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>{t('auth.password')}</label>
-                <div className="relative">
-                  <input type={showPass ? 'text' : 'password'} value={form.password} onChange={(e) => updateForm('password', e.target.value)} className={`${inputClass} pr-10`} placeholder={t('auth.passwordPlaceholder')} autoComplete="new-password" />
-                  <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none p-1">
-                    {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
+            <div className="panel-body">
+              {error && (
+                <div className="notice notice-critical mb-5" role="alert">
+                  <AlertCircle size={18} className="text-conf-critical shrink-0 mt-px" />
+                  <span className="text-body">{error}</span>
                 </div>
-              </div>
-              <div>
-                <label className={labelClass}>{t('auth.confirmPassword')}</label>
-                <input type="password" value={form.confirmPassword} onChange={(e) => updateForm('confirmPassword', e.target.value)} className={inputClass} placeholder={t('auth.confirmPlaceholder')} autoComplete="new-password" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={labelClass}>{t('auth.age')} <span className="text-red-500">*</span></label>
-                <input type="number" value={form.age} onChange={(e) => updateForm('age', e.target.value)} className={inputClass} placeholder="—" min="1" max="120" />
-              </div>
-              <div>
-                <label className={labelClass}>{t('auth.gender')} <span className="text-red-500">*</span></label>
-                <select value={form.gender} onChange={(e) => updateForm('gender', e.target.value)} className={`${inputClass} bg-white`}>
-                  <option value="">—</option>
-                  <option value="Male">{t('auth.male')}</option>
-                  <option value="Female">{t('auth.female')}</option>
-                  <option value="Other">{t('auth.other')}</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>{t('auth.region')} <span className="text-red-500">*</span></label>
-                <select value={form.region} onChange={(e) => updateForm('region', e.target.value)} className={`${inputClass} bg-white`}>
-                  <option value="">—</option>
-                  {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-50 cursor-pointer text-sm shadow-md shadow-purple-200 flex items-center justify-center gap-2 border-none"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>{t('auth.register')} <ArrowRight size={16} /></>
               )}
-            </button>
-          </form>
 
-          <div className="mt-6 pt-5 border-t border-gray-100 text-center">
-            <p className="text-sm text-gray-400">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Role selector */}
+                <div>
+                  <label className="label mb-2">{t('auth.role')}</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { value: 'patient', label: t('auth.rolePatient'), icon: User },
+                      { value: 'clinician', label: t('auth.roleHealthworker'), icon: Stethoscope },
+                    ].map(({ value, label, icon: Icon }) => {
+                      const active = form.role === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => updateForm('role', value)}
+                          aria-pressed={active}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-control text-body font-semibold border-2 cursor-pointer transition-colors ${
+                            active
+                              ? 'border-brand-600 bg-brand-50 text-brand-800'
+                              : 'border-line-strong bg-surface text-ink-600 hover:border-ink-300'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="reg-username" className="label mb-2">
+                    {t('auth.username')}
+                  </label>
+                  <input
+                    id="reg-username"
+                    type="text"
+                    value={form.username}
+                    onChange={(e) => updateForm('username', e.target.value)}
+                    className="field"
+                    placeholder={t('auth.usernamePlaceholder')}
+                    autoComplete="username"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reg-email" className="label mb-2">
+                    {t('auth.email')}
+                  </label>
+                  <input
+                    id="reg-email"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => updateForm('email', e.target.value)}
+                    className="field"
+                    placeholder={t('auth.emailPlaceholder')}
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="reg-password" className="label mb-2">
+                      {t('auth.password')}
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="reg-password"
+                        type={showPass ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={(e) => updateForm('password', e.target.value)}
+                        className="field pe-11"
+                        placeholder={t('auth.passwordPlaceholder')}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(!showPass)}
+                        aria-label={t('auth.password')}
+                        className="absolute end-1 top-1/2 -translate-y-1/2 p-2.5 text-ink-600 hover:text-ink-950 cursor-pointer bg-transparent border-none"
+                      >
+                        {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="reg-confirm-password" className="label mb-2">
+                      {t('auth.confirmPassword')}
+                    </label>
+                    <input
+                      id="reg-confirm-password"
+                      type="password"
+                      value={form.confirmPassword}
+                      onChange={(e) => updateForm('confirmPassword', e.target.value)}
+                      className="field"
+                      placeholder={t('auth.confirmPlaceholder')}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label htmlFor="reg-age" className="label mb-2">
+                      {t('auth.age')} <span className="text-conf-critical">*</span>
+                    </label>
+                    <input
+                      id="reg-age"
+                      type="number"
+                      value={form.age}
+                      onChange={(e) => updateForm('age', e.target.value)}
+                      className="field"
+                      placeholder="—"
+                      min="1"
+                      max="120"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="reg-gender" className="label mb-2">
+                      {t('auth.gender')} <span className="text-conf-critical">*</span>
+                    </label>
+                    <select
+                      id="reg-gender"
+                      value={form.gender}
+                      onChange={(e) => updateForm('gender', e.target.value)}
+                      className="field"
+                    >
+                      <option value="">—</option>
+                      <option value="Male">{t('auth.male')}</option>
+                      <option value="Female">{t('auth.female')}</option>
+                      <option value="Other">{t('auth.other')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="reg-region" className="label mb-2">
+                      {t('auth.region')} <span className="text-conf-critical">*</span>
+                    </label>
+                    <select
+                      id="reg-region"
+                      value={form.region}
+                      onChange={(e) => updateForm('region', e.target.value)}
+                      className="field"
+                    >
+                      <option value="">—</option>
+                      {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <button type="submit" disabled={loading} className="btn btn-primary w-full">
+                  {loading ? (
+                    <span className="w-[18px] h-[18px] border-2 border-white/35 border-t-white rounded-pill animate-spin" />
+                  ) : (
+                    t('auth.register')
+                  )}
+                </button>
+              </form>
+            </div>
+
+            <div className="border-t border-line px-4 py-3.5 text-meta text-ink-600 text-center">
               {t('auth.hasAccount')}{' '}
-              <Link to="/login" className="text-purple-600 font-semibold no-underline hover:text-purple-700">{t('auth.loginHere')}</Link>
-            </p>
+              <Link to="/login" className="link">
+                {t('auth.loginHere')}
+              </Link>
+            </div>
           </div>
         </div>
       </div>

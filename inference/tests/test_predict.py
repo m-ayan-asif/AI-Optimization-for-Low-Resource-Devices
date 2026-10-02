@@ -37,6 +37,12 @@ class TestHealth:
         expected = {"Vitiligo", "Melasma", "Psoriasis", "Eczema", "Tinea", "Contact Dermatitis", "Seborrheic Dermatitis"}
         assert set(classes) == expected
 
+    def test_success_health_reports_model_state(self, client):
+        body = client.get("/health").json()
+        assert body["model_loaded"] is False          # tests run without weights
+        assert body["model_version"].endswith("-UNTRAINED")
+        assert body["warmed_up"] is True
+
     def test_success_asr_model_not_loaded_shown_in_status(self, client):
         # ASR_MODEL_PATH is nonexistent, so asr_pipe is None
         body = client.get("/health").json()
@@ -59,10 +65,50 @@ class TestPredict:
         required = {"model_version", "top_condition", "confidence_score", "all_scores", "heatmap_path", "inference_time_ms"}
         assert required.issubset(body.keys())
 
-    def test_success_top_condition_is_one_of_the_seven_classes(self, client, png_bytes):
-        valid_classes = {"Vitiligo", "Melasma", "Psoriasis", "Eczema", "Tinea", "Contact Dermatitis", "Seborrheic Dermatitis"}
+    def test_success_top_condition_is_a_class_or_inconclusive(self, client, png_bytes):
+        # With random weights the model is near-uniform, so the OOD guard reports
+        # "No Disease / Inconclusive". Either outcome is a valid response.
+        valid = {"Vitiligo", "Melasma", "Psoriasis", "Eczema", "Tinea", "Contact Dermatitis",
+                 "Seborrheic Dermatitis", "No Disease / Inconclusive"}
         body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
-        assert body["top_condition"] in valid_classes
+        assert body["top_condition"] in valid
+
+    def test_success_status_is_classified_or_out_of_scope(self, client, png_bytes):
+        body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
+        assert body["status"] in ("classified", "out_of_scope")
+        if body["status"] == "out_of_scope":
+            assert body["top_condition"] == "No Disease / Inconclusive"
+
+    def test_success_untrained_weights_are_tagged_in_model_version(self, client, png_bytes):
+        # Tests run without real weights; the response must say so.
+        body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
+        assert body["model_version"].endswith("-UNTRAINED")
+
+    def test_success_telemetry_block_has_profiling_fields(self, client, png_bytes):
+        t = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()["telemetry"]
+        for key in ("image_preprocess_ms", "model_inference_ms", "gradcam_generation_ms",
+                    "total_server_time_ms", "server_ram_used_mb", "gpu_vram_used_mb",
+                    "device_type", "blur_score", "entropy", "confidence_margin"):
+            assert key in t
+        assert t["server_ram_used_mb"] >= 0
+        assert t["total_server_time_ms"] >= t["model_inference_ms"]
+
+    # ── Runtime guards ────────────────────────────────────────────────────────
+
+    def test_guard_flat_image_rejected_as_too_blurry(self, client, blurry_png_bytes):
+        res = client.post("/predict", files={"image": ("flat.png", blurry_png_bytes, "image/png")})
+        assert res.status_code == 400
+        assert res.json()["code"] == "IMAGE_TOO_BLURRY"
+
+    def test_guard_non_skin_image_rejected(self, client, non_skin_png_bytes):
+        res = client.post("/predict", files={"image": ("blue.png", non_skin_png_bytes, "image/png")})
+        assert res.status_code == 400
+        assert res.json()["code"] == "NO_SKIN_DETECTED"
+
+    def test_guard_oversized_upload_rejected(self, client):
+        res = client.post("/predict", files={"image": ("big.png", b"0" * (10 * 1024 * 1024 + 1), "image/png")})
+        assert res.status_code == 413
+        assert res.json()["code"] == "FILE_TOO_LARGE"
 
     def test_success_confidence_score_is_between_0_and_1(self, client, png_bytes):
         body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
@@ -115,10 +161,15 @@ class TestPredict:
     def test_edge_large_image_is_resized_and_processed(self, client):
         # The preprocessing pipeline must resize any input to 224×224 before
         # feeding it to the model.  A 2048×2048 image must still succeed.
-        from PIL import Image
         import io
-        img = Image.new("RGB", (2048, 2048), color=(128, 64, 32))
+        import numpy as np
+        from PIL import Image
+        rng = np.random.default_rng(5)
+        arr = np.clip(np.array([200, 150, 100], dtype=float) + rng.normal(0, 12, (2048, 2048, 1)), 0, 255)
+        img = Image.fromarray(arr.astype("uint8"), "RGB")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         res = client.post("/predict", files={"image": ("large.png", buf.getvalue(), "image/png")})
         assert res.status_code == 200
+
+

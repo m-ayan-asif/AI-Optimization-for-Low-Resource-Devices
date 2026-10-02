@@ -20,56 +20,53 @@ export default function HistoryPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-          <History size={20} className="text-purple-500" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900">{t('history.title')}</h1>
-      </div>
+      <header className="flex items-center gap-2.5 pb-3 mb-6 border-b-2 border-ink-950">
+        <History size={19} className="text-ink-600" />
+        <h1 className="text-h1 text-ink-950 m-0">{t('history.title')}</h1>
+      </header>
 
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin" />
         </div>
       ) : items.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-purple-100 p-14 text-center">
-          <div className="w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
-            <Clock size={28} className="text-purple-300" />
-          </div>
-          <p className="text-gray-400">{t('history.empty')}</p>
+        <div className="panel panel-body text-center py-12">
+          <Clock size={22} className="text-ink-300 mx-auto mb-3" />
+          <p className="text-body text-ink-600 m-0">{t('history.empty')}</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="panel">
           {items.map((item) => {
             const level = item.confidence_score ? getConfidenceLevel(item.confidence_score) : null;
+            const reviewed = item.status === 'reviewed';
             return (
               <Link
                 key={item.case_id}
                 to={`/results/${item.case_id}`}
-                className="flex items-center justify-between bg-white rounded-xl border border-gray-100 p-4 no-underline hover:border-purple-200 hover:shadow-sm transition-all group"
+                className="flex items-center justify-between gap-4 px-4 py-3.5 border-b border-line last:border-b-0 no-underline hover:bg-wash transition-colors group"
               >
-                <div>
-                  <div className="font-medium text-gray-900 group-hover:text-purple-700 transition-colors">
+                <div className="min-w-0">
+                  <div className="text-body font-semibold text-ink-950 truncate">
                     {item.top_condition || t('history.pending')}
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-400 mt-1">
+                  <div className="flex items-center gap-2.5 text-meta text-ink-500 mt-1">
                     <span>{new Date(item.created_at).toLocaleDateString()}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      item.status === 'reviewed'
-                        ? 'bg-green-50 text-green-600 border border-green-100'
-                        : 'bg-gray-50 text-gray-500 border border-gray-100'
-                    }`}>
-                      {item.status === 'reviewed' ? t('history.reviewed') : t('history.pending')}
+                    <span
+                      className={`px-2 py-0.5 rounded-control text-label font-semibold ${
+                        reviewed ? 'bg-conf-good-tint text-conf-good' : 'bg-wash text-ink-600'
+                      }`}
+                    >
+                      {reviewed ? t('history.reviewed') : t('history.pending')}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                   {level && (
-                    <span className={`text-sm font-semibold px-3 py-1 rounded-full confidence-${level}`}>
+                    <span className={`text-meta font-semibold px-2.5 py-1 rounded-control tnum confidence-${level}`}>
                       {(item.confidence_score * 100).toFixed(0)}%
                     </span>
                   )}
-                  <ArrowRight size={16} className="text-gray-300 group-hover:text-purple-400 transition-colors" />
+                  <ArrowRight size={16} className="text-ink-300 group-hover:text-brand-600 transition-colors" />
                 </div>
               </Link>
             );
