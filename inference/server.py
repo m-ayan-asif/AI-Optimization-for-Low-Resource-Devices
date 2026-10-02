@@ -39,7 +39,7 @@ from quality import (
 )
 
 # ── Config ────────────────────────────────────────────────────────────
-MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_distilled.pth")
+MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_clip_dualkd_distilled.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
 ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "./models/asr/whisper-urdu")
 PORT = int(os.environ.get("INFERENCE_PORT", 5001))
