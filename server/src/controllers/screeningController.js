@@ -75,10 +75,13 @@ async function uploadImage(req, res) {
     const { caseId } = req.params;
     const file = req.file;
 
-    // Check file presence before DB checks so standard upload error responses match tests
+    // Check file presence first so multer/empty upload responses match existing contracts
     if (!file) {
       return res.status(400).json({ error: 'No image file provided', code: 'EMPTY_FILE' });
     }
+
+    // Enforce ownership
+    const existingCase = await verifyCaseOwnership(caseId, req.user.userId);
 
     const imageResult = await db.query(
       `INSERT INTO images (file_path, file_size, format, width, height)
@@ -86,13 +89,16 @@ async function uploadImage(req, res) {
       [file.path, file.size, file.mimetype === 'image/png' ? 'PNG' : 'JPEG', null, null]
     );
 
-    await db.query('UPDATE screening_cases SET image_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text', [
-      imageResult.rows[0].image_id,
-      caseId,
-    ]);
+    await db.query(
+      'UPDATE screening_cases SET image_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text',
+      [imageResult.rows[0].image_id, existingCase.case_id]
+    );
 
     res.json({ image_id: imageResult.rows[0].image_id, message: 'Image uploaded' });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
     console.error('Upload image error:', err);
     res.status(500).json({ error: 'Image upload failed', code: 'UPLOAD_ERROR' });
   }
@@ -106,6 +112,9 @@ async function submitVoice(req, res) {
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided', code: 'EMPTY_AUDIO' });
     }
+
+    // Enforce ownership
+    const existingCase = await verifyCaseOwnership(caseId, req.user.userId);
 
     let asr;
     try {
@@ -143,10 +152,10 @@ async function submitVoice(req, res) {
       );
     }
 
-    await db.query('UPDATE screening_cases SET transcript_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text', [
-      transcriptId,
-      caseId,
-    ]);
+    await db.query(
+      'UPDATE screening_cases SET transcript_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text',
+      [transcriptId, existingCase.case_id]
+    );
 
     res.json({
       transcript_id: transcriptId,
@@ -156,6 +165,9 @@ async function submitVoice(req, res) {
       asr_available: asr.transcript_text !== null,
     });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
     console.error('Voice submit error:', err);
     res.status(500).json({ error: 'Voice processing failed', code: 'VOICE_ERROR' });
   }
@@ -170,6 +182,8 @@ async function submitTextInput(req, res) {
       return res.status(400).json({ error: 'No text provided', code: 'EMPTY_TEXT' });
     }
 
+    // Enforce ownership
+    const existingCase = await verifyCaseOwnership(caseId, req.user.userId);
     const dbLanguage = language === 'en' ? 'en' : 'ur';
 
     const transcriptResult = await db.query(
@@ -180,10 +194,10 @@ async function submitTextInput(req, res) {
 
     const transcriptId = transcriptResult.rows[0].transcript_id;
 
-    await db.query('UPDATE screening_cases SET transcript_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text', [
-      transcriptId,
-      caseId,
-    ]);
+    await db.query(
+      'UPDATE screening_cases SET transcript_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text',
+      [transcriptId, existingCase.case_id]
+    );
 
     res.json({
       transcript_id: transcriptId,
@@ -193,6 +207,9 @@ async function submitTextInput(req, res) {
       asr_available: false,
     });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
     console.error('Text input error:', err);
     res.status(500).json({ error: 'Text submission failed', code: 'TEXT_ERROR' });
   }
@@ -202,11 +219,14 @@ async function runInference(req, res) {
   try {
     const { caseId } = req.params;
 
+    // Enforce ownership
+    const existingCase = await verifyCaseOwnership(caseId, req.user.userId);
+
     const caseResult = await db.query(
       `SELECT i.file_path FROM screening_cases sc
        JOIN images i ON sc.image_id = i.image_id
        WHERE sc.case_id::text = $1::text`,
-      [caseId]
+      [existingCase.case_id]
     );
 
     if (caseResult.rows.length === 0 || !caseResult.rows[0].file_path) {
@@ -254,7 +274,7 @@ async function runInference(req, res) {
 
     const predictionId = predResult.rows[0].prediction_id;
 
-    // Direct telemetry write if telemetry table exists
+    // Direct telemetry write to PostgreSQL
     const telemetry = prediction.telemetry || {};
     try {
       await db.query(
@@ -283,7 +303,7 @@ async function runInference(req, res) {
            entropy = EXCLUDED.entropy,
            confidence_margin = EXCLUDED.confidence_margin`,
         [
-          caseId,
+          existingCase.case_id,
           telemetry.image_preprocess_ms ?? null,
           telemetry.model_inference_ms ?? prediction.inference_time_ms ?? null,
           telemetry.gradcam_generation_ms ?? null,
@@ -296,13 +316,13 @@ async function runInference(req, res) {
           telemetry.confidence_margin ?? null
         ]
       );
-    } catch (_) {
-      // Non-fatal if telemetry table mock is unconfigured
+    } catch (telErr) {
+      console.warn('Telemetry insertion warning:', telErr.message);
     }
 
     await db.query(
       'UPDATE screening_cases SET prediction_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text',
-      [predictionId, caseId]
+      [predictionId, existingCase.case_id]
     );
 
     res.json({
@@ -311,6 +331,9 @@ async function runInference(req, res) {
       is_mock: isMock
     });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
     console.error('Inference error:', err);
     res.status(500).json({ error: 'Inference failed', code: 'INFERENCE_FAILURE' });
   }
@@ -388,7 +411,6 @@ async function callASRService(audioPath) {
   const FormData = require('form-data');
   const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
-  // Read file into buffer so form-data sets an exact Content-Length
   const fileBuffer = fs.readFileSync(absolutePath);
   const formData = new FormData();
   formData.append('audio', fileBuffer, {
@@ -397,7 +419,6 @@ async function callASRService(audioPath) {
   });
 
   const controller = new AbortController();
-  // Whisper on CPU requires up to 60-90s; set timeout to 120s
   const timeoutId = setTimeout(() => {
     console.warn('[callASRService] 120s timeout reached, aborting ASR request');
     controller.abort();
@@ -435,6 +456,7 @@ async function callASRService(audioPath) {
 async function getResults(req, res) {
   try {
     const { caseId } = req.params;
+    const existingCase = await verifyCaseOwnership(caseId, req.user.userId);
 
     const caseResult = await db.query(
       `SELECT sc.*, p.top_condition, p.confidence_score, p.all_scores, p.heatmap_path, p.inference_time_ms, p.model_version,
@@ -447,7 +469,7 @@ async function getResults(req, res) {
        LEFT JOIN clinician_feedback cf ON cf.case_id = sc.case_id
        LEFT JOIN users cu ON cf.clinician_id = cu.user_id
        WHERE sc.case_id::text = $1::text AND sc.patient_id = $2`,
-      [caseId, req.user.userId]
+      [existingCase.case_id, req.user.userId]
     );
 
     if (caseResult.rows.length === 0) {
@@ -476,6 +498,9 @@ async function getResults(req, res) {
 
     res.json({ ...row, symptoms, heatmap_url, is_mock: isMock });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
     console.error('Get results error:', err);
     res.status(500).json({ error: 'Failed to fetch results', code: 'RESULTS_ERROR' });
   }
