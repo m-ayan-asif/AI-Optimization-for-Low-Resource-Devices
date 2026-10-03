@@ -41,7 +41,13 @@ from quality import (
 # ── Config ────────────────────────────────────────────────────────────
 MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_clip_dualkd_distilled.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
-ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "./models/asr/whisper-urdu")
+# Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py) - 23.6% WER vs the turbo's 25.5% on the same
+# FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo (download_asr_model.py) when
+# the fine-tune isn't present locally, since model weights aren't in git.
+ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH") or next(
+    (p for p in ("./models/asr/whisper-small-urdu-ours", "./models/asr/whisper-urdu") if os.path.isdir(p)),
+    "./models/asr/whisper-urdu",
+)
 PORT = int(os.environ.get("INFERENCE_PORT", 5001))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -213,7 +219,7 @@ def health():
     return {
         "status": "ok",
         "model": "MobileNetV3-Large (distilled)",
-        "asr_model": "whisper-large-v3-turbo-urdu" if asr_pipe is not None else "not loaded",
+        "asr_model": os.path.basename(os.path.normpath(ASR_MODEL_PATH)) if asr_pipe is not None else "not loaded",
         "device": str(DEVICE),
         "classes": CLASS_NAMES,
         "model_version": MODEL_VERSION,
