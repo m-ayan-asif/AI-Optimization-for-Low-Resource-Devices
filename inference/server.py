@@ -41,11 +41,16 @@ from quality import (
 # ── Config ────────────────────────────────────────────────────────────
 MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_clip_dualkd_distilled.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
-# Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py) - 23.6% WER vs the turbo's 25.5% on the same
-# FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo (download_asr_model.py) when
-# the fine-tune isn't present locally, since model weights aren't in git.
+# Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py, weights in git via LFS) - 23.6% WER vs the
+# turbo's 25.5% on the same FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo
+# (download_asr_model.py) if the fine-tune is missing or still an un-pulled LFS pointer (run `git lfs pull`).
+def _usable_asr_dir(path):
+    weights = os.path.join(path, "model.safetensors")
+    return os.path.isdir(path) and (not os.path.exists(weights) or not is_lfs_pointer(weights))
+
+
 ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH") or next(
-    (p for p in ("./models/asr/whisper-small-urdu-ours", "./models/asr/whisper-urdu") if os.path.isdir(p)),
+    (p for p in ("./models/asr/whisper-small-urdu-ours", "./models/asr/whisper-urdu") if _usable_asr_dir(p)),
     "./models/asr/whisper-urdu",
 )
 PORT = int(os.environ.get("INFERENCE_PORT", 5001))
