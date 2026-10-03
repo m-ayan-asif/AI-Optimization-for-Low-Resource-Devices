@@ -8,7 +8,7 @@ Used for the training-data ablation: identical teacher, seed and config, only --
     python train_dualkd.py --train-csv ../data/processed/train.csv           --run-name control --seed 0
     python train_dualkd.py --train-csv ../data/processed/train_augmented.csv --run-name augdata --seed 0
 
-Teacher: ../models/teacher_b3_split0926.pth (md5 d2ad9d93...) - the EfficientNet-B3 trained on the current
+Default teacher (--teacher): ../models/teacher_b3_split0926.pth (md5 d2ad9d93...) - the EfficientNet-B3 trained on the current
 2026-09-26 split (71.82% test). The teacher behind the served 74.98% student is no longer on disk, and
 .bench/models_before_retrain/teacher_final.pth predates the re-split (78.6% on today's test set - it has
 almost certainly seen test images) and must not be used.
@@ -100,8 +100,8 @@ class DistillDataset(Dataset):
         return train_transform(image), b3_train_transform(image), self.clip_probs[idx], row["numeric_label"]
 
 
-def build_teacher():
-    m = models.efficientnet_b3(weights=None)
+def build_teacher(pretrained=False):
+    m = models.efficientnet_b3(weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1 if pretrained else None)
     m.classifier = nn.Sequential(nn.Dropout(p=0.3), nn.Linear(m.classifier[1].in_features, 512), nn.SiLU(),
                                  nn.Dropout(p=0.2), nn.Linear(512, len(CLASS_NAMES)))
     return m
@@ -145,15 +145,16 @@ def main():
     ap.add_argument("--run-name", required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--teacher", default=TEACHER_CHECKPOINT, help="EfficientNet-B3 checkpoint (e.g. from train_teacher.py)")
     ap.add_argument("--epochs", type=int, default=NUM_EPOCHS)
     ap.add_argument("--limit", type=int, default=0, help="smoke test: use only the first N train rows")
     args = ap.parse_args()
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = f"../models/student_large_clip_dualkd_{args.run_name}.pth"
-    print(f"run={args.run_name} train={args.train_csv} seed={args.seed} device={device}", flush=True)
+    print(f"run={args.run_name} train={args.train_csv} teacher={args.teacher} seed={args.seed} device={device}", flush=True)
 
-    teacher = build_teacher(); teacher.load_state_dict(torch.load(TEACHER_CHECKPOINT, map_location=device, weights_only=True))
+    teacher = build_teacher(); teacher.load_state_dict(torch.load(args.teacher, map_location=device, weights_only=True))
     teacher = teacher.to(device).eval().requires_grad_(False)
 
     clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(CLIP_MODEL_NAME, pretrained=CLIP_PRETRAINED)
@@ -222,7 +223,7 @@ def main():
             print(f"early stop at epoch {epoch}", flush=True); break
 
     student.load_state_dict(torch.load(ckpt, map_location=device, weights_only=True))
-    results = {"run": args.run_name, "train_csv": args.train_csv, "seed": args.seed, "teacher": TEACHER_CHECKPOINT,
+    results = {"run": args.run_name, "train_csv": args.train_csv, "seed": args.seed, "teacher": args.teacher,
                "train_class_counts": dict(zip(CLASS_NAMES, counts.tolist())), "history": history,
                "test": report(*logits_of(student, test_loader, device)),
                "clip_alone_test_accuracy": round(100 * accuracy_score(pd.read_csv(TEST_CSV)["numeric_label"], clip_test.argmax(1)), 2)}
