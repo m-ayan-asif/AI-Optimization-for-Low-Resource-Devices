@@ -1,0 +1,91 @@
+# SkinSense production stack: Postgres + Express API + FastAPI inference (CPU) + Caddy (HTTPS, PWA, reverse proxy).
+#   cd deploy && cp .env.example .env   # then edit it
+#   docker compose up -d --build
+# See deploy/README.md.
+name: skinsense
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: skinsense
+      POSTGRES_USER: skinsense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs 001..004 in name order, only on the first boot of an empty volume.
+      - ../server/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skinsense -d skinsense"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  inference:
+    build: ../inference
+    restart: unless-stopped
+    environment:
+      MODEL_PATH: ${MODEL_PATH:-./models/student_clean_res320_s2.pth}
+      IMG_SIZE: ${IMG_SIZE:-320}
+      ASR_MODEL_PATH: ${ASR_MODEL_PATH:-./models/asr/whisper-small-urdu-ours}
+      OMP_NUM_THREADS: ${INFERENCE_THREADS:-4}
+    volumes:
+      - heatmaps:/data/heatmaps
+    # Measured on CPU: ~2.85 GB peak with the 320px student + whisper-small loaded and transcribing.
+    mem_limit: ${INFERENCE_MEM_LIMIT:-4g}
+
+  api:
+    build: ../server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: skinsense
+      DB_USER: skinsense
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
+      UPLOAD_DIR: /data/uploads
+      INFERENCE_URL: http://inference:5001
+      INFERENCE_TIMEOUT_MS: ${INFERENCE_TIMEOUT_MS:-60000}
+      PUBLIC_HEATMAP_BASE: /heatmaps
+      CORS_ORIGIN: https://${DOMAIN:-localhost}
+      TRUST_PROXY: 1
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      # Started, not healthy: the API keeps serving while Whisper loads.
+      inference:
+        condition: service_started
+    mem_limit: 512m
+
+  web:
+    build: ../client
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 256m
+
+volumes:
+  pgdata:
+  uploads:
+  heatmaps:
+  caddy_data:
+  caddy_config:
