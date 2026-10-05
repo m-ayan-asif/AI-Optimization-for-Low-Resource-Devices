@@ -14,9 +14,20 @@ export function AuthProvider({ children }) {
       setAuthToken(token);
       api
         .get('/auth/profile')
-        .then((res) => setUser(res.data))
-        .catch(() => {
+        .then((res) => {
+          setUser(res.data);
+          sessionStorage.setItem('ss_user', JSON.stringify(res.data));
+        })
+        .catch((err) => {
+          // Offline (no response): keep the session so on-device screening still works; the server re-checks the
+          // token on the next request anyway.
+          const cached = sessionStorage.getItem('ss_user');
+          if (!err.response && cached) {
+            setUser(JSON.parse(cached));
+            return;
+          }
           sessionStorage.removeItem('ss_token');
+          sessionStorage.removeItem('ss_user');
           clearAuthToken();
         })
         .finally(() => setLoading(false));
@@ -29,6 +40,7 @@ export function AuthProvider({ children }) {
     const res = await api.post('/auth/login', { username, password });
     const { token, user: userData } = res.data;
     sessionStorage.setItem('ss_token', token);
+    sessionStorage.setItem('ss_user', JSON.stringify(userData));
     setAuthToken(token);
     setUser(userData);
     return userData;
@@ -38,6 +50,7 @@ export function AuthProvider({ children }) {
     const res = await api.post('/auth/register', formData);
     const { token, user: userData } = res.data;
     sessionStorage.setItem('ss_token', token);
+    sessionStorage.setItem('ss_user', JSON.stringify(userData));
     setAuthToken(token);
     setUser(userData);
     return userData;
@@ -45,6 +58,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     sessionStorage.removeItem('ss_token');
+    sessionStorage.removeItem('ss_user');
     clearAuthToken();
     setUser(null);
   }, []);

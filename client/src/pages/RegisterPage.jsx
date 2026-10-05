@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { REGIONS } from '../utils/constants';
 import { Eye, EyeOff, User, Stethoscope, AlertCircle } from 'lucide-react';
+import logo from '../assets/logo.png';
 
 const KNOWN_EMAIL_DOMAINS = [
   'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com',
@@ -132,7 +133,7 @@ export default function RegisterPage() {
           {/* Identity */}
           <div className="flex items-center gap-3 mb-7">
             <img
-              src="/src/assets/logo.png"
+              src={logo}
               alt=""
               className="w-12 h-12 object-contain shrink-0"
             />

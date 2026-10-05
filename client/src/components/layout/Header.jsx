@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { Menu, X, Globe, LogOut } from 'lucide-react';
 import { useState } from 'react';
+import logo from '../../assets/logo.png';
 
 export default function Header() {
   const { t, i18n } = useTranslation();
@@ -49,7 +50,7 @@ export default function Header() {
           }
           className="flex items-center gap-2.5 no-underline shrink-0"
         >
-          <img src="/src/assets/logo.png" alt="" className="w-7 h-7 object-contain" />
+          <img src={logo} alt="" className="w-7 h-7 object-contain" />
           <span className="text-h2 font-bold text-white">{t('app.name')}</span>
         </Link>
 
