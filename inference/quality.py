@@ -5,6 +5,7 @@ Kept separate from server.py so they can be unit-tested (and reused) without
 loading PyTorch or the model weights.
 """
 import math
+import os
 from typing import Iterable
 
 import cv2
@@ -12,23 +13,31 @@ import numpy as np
 from PIL import Image
 
 # ── Thresholds (calibrate on a labelled set of good / blurry / non-skin images) ──
-MIN_SKIN_RATIO = 0.15
+# Calibrated 2026-10-04 with sweep_guards.py (172 real non-skin photos, 36 synthetic negatives, val/test lesion
+# photos). The colour mask alone rejected 7% of real test lesions yet accepted 47% of real non-skin photos, so it is
+# now only a coarse pre-filter and the energy score below does most of the out-of-distribution work.
+MIN_SKIN_RATIO = 0.05
 BLUR_REJECT_THRESHOLD = 20.0      # Laplacian variance below this => too blurry
 BLUR_MAX_SIDE = 512               # measure blur at a bounded resolution
 LOW_CONFIDENCE_THRESHOLD = 0.30
 OOD_ENTROPY_THRESHOLD = 1.65      # ln(7) = 1.946 is the maximum for 7 classes
 OOD_MARGIN_THRESHOLD = 0.08
+# logsumexp(logits) below this => input unlike the training data. Keeps 97.5% of val lesions for the served
+# student_clean_res320_s2.pth (2026-10-05 sweep: 0/36 synthetic and 56/172 real non-skin photos accepted, 2/56
+# curated lesions and 9.2% of clean-test lesions rejected). Model-specific: re-run
+# `sweep_guards.py --model <pth> --img-size <px> --split-suffix _clean` when the model changes (224 px student: 2.37).
+OOD_ENERGY_THRESHOLD = float(os.environ.get("OOD_ENERGY_THRESHOLD", 2.31))
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec"
 
 
-def is_skin_image(pil_image: Image.Image, min_skin_ratio: float = MIN_SKIN_RATIO) -> bool:
-    """Joint HSV + YCrCb skin-tone check (covers Fitzpatrick types IV-VI)."""
+def skin_ratio(pil_image: Image.Image) -> float:
+    """Fraction of pixels passing a joint HSV + YCrCb skin-tone mask (covers Fitzpatrick types IV-VI)."""
     img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     total_pixels = img.shape[0] * img.shape[1]
     if total_pixels == 0:
-        return False
+        return 0.0
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     mask_hsv = cv2.inRange(hsv, np.array([0, 15, 0], np.uint8), np.array([25, 255, 255], np.uint8))
@@ -37,7 +46,11 @@ def is_skin_image(pil_image: Image.Image, min_skin_ratio: float = MIN_SKIN_RATIO
     mask_ycrcb = cv2.inRange(ycrcb, np.array([0, 133, 77], np.uint8), np.array([255, 173, 127], np.uint8))
 
     skin_pixels = np.count_nonzero(cv2.bitwise_and(mask_hsv, mask_ycrcb))
-    return bool((skin_pixels / total_pixels) >= min_skin_ratio)
+    return skin_pixels / total_pixels
+
+
+def is_skin_image(pil_image: Image.Image, min_skin_ratio: float = MIN_SKIN_RATIO) -> bool:
+    return bool(skin_ratio(pil_image) >= min_skin_ratio)
 
 
 def check_image_blur(cv_image: np.ndarray, max_side: int = BLUR_MAX_SIDE) -> float:
@@ -71,16 +84,19 @@ def entropy_from_probs(probabilities: Iterable[float]) -> float:
     return entropy
 
 
-def assess_prediction(confidence: float, margin: float, entropy: float) -> str:
+def assess_prediction(confidence: float, margin: float, entropy: float, energy: float = None) -> str:
     """
     Decide whether a prediction can be shown as a classification.
 
     Returns "out_of_scope" when the model is guessing (low top-1 confidence, or a
-    near-uniform distribution with a negligible lead over the runner-up).
+    near-uniform distribution with a negligible lead over the runner-up, or a low
+    energy score, i.e. logits too weak overall for an image like the training data).
     """
     if confidence <= LOW_CONFIDENCE_THRESHOLD:
         return "out_of_scope"
     if entropy > OOD_ENTROPY_THRESHOLD and margin < OOD_MARGIN_THRESHOLD:
+        return "out_of_scope"
+    if energy is not None and energy < OOD_ENERGY_THRESHOLD:
         return "out_of_scope"
     return "classified"
 

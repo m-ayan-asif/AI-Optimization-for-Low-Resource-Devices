@@ -24,6 +24,7 @@ args = parser.parse_args()
 
 NEG_DIR = os.path.join(args.test_dir, "negative")
 POS_DIR = os.path.join(args.test_dir, "positive")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 
 def collect_images(root, label_from_subdir=False):
@@ -38,10 +39,12 @@ def collect_images(root, label_from_subdir=False):
             for f in sorted(os.listdir(subdir)):
                 items.append((os.path.join(subdir, f), sub))
     else:
-        for f in sorted(os.listdir(root)):
-            p = os.path.join(root, f)
-            if os.path.isfile(p):
-                items.append((p, None))
+        # recurse so real photos (negative/real/) sit alongside the synthetic ones
+        for dirpath, dirnames, files in os.walk(root):
+            dirnames.sort()
+            for f in sorted(files):
+                if f.lower().endswith(IMAGE_EXTS):
+                    items.append((os.path.join(dirpath, f), None))
     return items
 
 
@@ -63,7 +66,7 @@ for path, kind, true_class in all_items:
                 "path": path, "kind": kind, "true_class": true_class,
                 "http_status": r.status_code, "status": "http_error",
                 "top_condition": None, "confidence_score": None,
-                "entropy": None, "confidence_margin": None, "latency_ms": latency_ms,
+                "entropy": None, "energy": None, "confidence_margin": None, "latency_ms": latency_ms,
             })
             continue
         body = r.json()
@@ -74,6 +77,7 @@ for path, kind, true_class in all_items:
             "top_condition": body.get("top_condition"),
             "confidence_score": body.get("confidence_score"),
             "entropy": telemetry.get("entropy"),
+            "energy": telemetry.get("energy"),
             "confidence_margin": telemetry.get("confidence_margin"),
             "latency_ms": latency_ms,
         })
@@ -82,7 +86,7 @@ for path, kind, true_class in all_items:
             "path": path, "kind": kind, "true_class": true_class,
             "http_status": "error", "status": f"exception:{e}",
             "top_condition": None, "confidence_score": None,
-            "entropy": None, "confidence_margin": None, "latency_ms": None,
+            "entropy": None, "energy": None, "confidence_margin": None, "latency_ms": None,
         })
 
 out_csv = os.path.join(os.path.dirname(__file__), "guard_eval.csv")

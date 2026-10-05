@@ -39,7 +39,10 @@ from quality import (
 )
 
 # ── Config ────────────────────────────────────────────────────────────
-MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_clip_dualkd_distilled.pth")
+# Production student: CLIP dual-KD MobileNetV3-Large trained on the leak-free split at 320 px (seed picked on val):
+# 74.58% test / 70.85 macro-F1 on the clean test set. The older 224 px student is kept for comparison; set
+# MODEL_PATH=./models/student_large_clip_dualkd_distilled.pth IMG_SIZE=224 to serve it.
+MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
 # Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py, weights in git via LFS) - 23.6% WER vs the
 # turbo's 25.5% on the same FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo
@@ -67,7 +70,7 @@ CLASS_NAMES = [
 ]
 
 NUM_CLASSES = len(CLASS_NAMES)
-IMG_SIZE = 224
+IMG_SIZE = int(os.environ.get("IMG_SIZE", 320))
 
 
 # ── Model Definition ──────────────────────────────────────────────────
@@ -145,7 +148,7 @@ def create_heatmap_overlay(original_image, cam, alpha=0.4):
 
 
 # ── Load Models ───────────────────────────────────────────────────────
-MODEL_VERSION = "mobilenetv3-large-distilled-v1"
+MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-v2")
 print(f"Loading model from {MODEL_PATH} on {DEVICE}...")
 model = build_student_large(NUM_CLASSES)
 MODEL_LOADED = False
@@ -305,9 +308,10 @@ async def predict(image: UploadFile = File(...)):
     confidence_score = float(sorted_probs[0].item())
     confidence_margin = confidence_score - float(sorted_probs[1].item())
     entropy = compute_prediction_entropy(probabilities)
+    energy = float(torch.logsumexp(logits[0], dim=0).item())
 
     # ── Phase 3: Out-of-distribution / non-lesion check ──
-    status = assess_prediction(confidence_score, confidence_margin, entropy)
+    status = assess_prediction(confidence_score, confidence_margin, entropy, energy)
 
     # ── Phase 4: Grad-CAM explainability heatmap ──
     start_cam = time.perf_counter()
@@ -339,6 +343,7 @@ async def predict(image: UploadFile = File(...)):
         "device_type": str(DEVICE.type),
         "blur_score": round(blur_score, 1),
         "entropy": round(entropy, 3),
+        "energy": round(energy, 3),
         "confidence_margin": round(confidence_margin, 3),
     }
 
