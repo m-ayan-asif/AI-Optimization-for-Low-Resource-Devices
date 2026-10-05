@@ -6,7 +6,7 @@ It runs in two ways:
 - **PC / server:** Docker Compose stack (PostgreSQL, Express API, FastAPI inference on CPU, Caddy with HTTPS). See [deploy/README.md](deploy/README.md).
 - **Phone:** the web app installs as a PWA and runs **both** the skin model and our Urdu Whisper **on the device**, offline. Screenings done offline are kept on the phone and upload to the account when the connection returns.
 
-**Current model:** MobileNetV3-Large, 320×320 input, distilled from an EfficientNet-B3 teacher and CLIP. Honest accuracy on the leak-free test split: **73.70 ± 0.81 %** (3 seeds), top-3 96.6 %, macro-F1 70.4. The weekend that produced it (and why earlier numbers like 74.98 % were inflated) is written up in [documentation/WEEKEND_REPORT.md](documentation/WEEKEND_REPORT.md).
+**Current model:** MobileNetV3-Large, 320×320 input, distilled from an EfficientNet-B3 teacher and CLIP. Honest accuracy on the leak-free test split: **73.70 ± 0.81 %** (3 seeds), top-3 96.6 %, macro-F1 70.4. It also has an 8th output, *not a skin lesion*: photos of animals, objects, scenes or textures are rejected with a "please retake" message instead of getting a diagnosis (10 of 172 real non-skin test photos still get through, down from 56). The weekend that produced it (and why earlier numbers like 74.98 % were inflated) is written up in [documentation/WEEKEND_REPORT.md](documentation/WEEKEND_REPORT.md).
 
 > **Disclaimer:** SkinSense is a screening aid, not a diagnostic tool. It does not replace a qualified clinician.
 

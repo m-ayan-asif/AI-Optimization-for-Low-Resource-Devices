@@ -6,6 +6,7 @@ import {
   skinRatio,
   blurScore,
   summarizeLogits,
+  notLesionProbability,
   heatmapOverlayRGBA,
 } from './preprocess';
 import { SKIN_MODEL_DIR, ORT_WASM_PATH } from './config';
@@ -87,7 +88,12 @@ export async function analyzeImage(file) {
 
   const out = await session.run({ input });
   const t2 = performance.now();
-  const summary = summarizeLogits(Array.from(out.logits.data), meta);
+  const logits = Array.from(out.logits.data);
+  const notLesion = notLesionProbability(logits, meta);
+  if (notLesion != null && notLesion >= guards.not_lesion_threshold) {
+    throw new ScreeningError('NOT_A_LESION', 'This photo does not look like a skin condition.');
+  }
+  const summary = summarizeLogits(logits, meta);
   const [, camH, camW] = out.cam.dims;
   const heatmap = await rgbaToPngBlob(heatmapOverlayRGBA(resized, size, out.cam.data, camW, camH), size);
   const t3 = performance.now();
@@ -109,6 +115,7 @@ export async function analyzeImage(file) {
         blur_score: Math.round(blur * 10) / 10,
         entropy: Math.round(summary.entropy * 1000) / 1000,
         confidence_margin: Math.round(summary.margin * 1000) / 1000,
+        ...(notLesion != null && { not_lesion_probability: Math.round(notLesion * 1e4) / 1e4 }),
       },
     },
     heatmap,

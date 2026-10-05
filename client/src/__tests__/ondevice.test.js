@@ -8,6 +8,7 @@ import {
   skinRatio,
   blurScore,
   summarizeLogits,
+  notLesionProbability,
   toNormalizedCHW,
   heatmapOverlayRGBA,
 } from '../ondevice/preprocess';
@@ -98,5 +99,28 @@ describe('tensor + heatmap helpers', () => {
     expect(out[3]).toBe(255);
     // CAM 0 -> JET dark blue (0, 0, 0.5): R = 0.6 * 200 = 120
     expect(out[0]).toBe(120);
+  });
+});
+
+describe('8-output models (trained "not a skin lesion" class)', () => {
+  const meta = { guards: fixture.guards, class_names: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], not_lesion_index: 7 };
+
+  it('notLesionProbability is the softmax of output 7 over all 8 outputs', () => {
+    const logits = [0, 0, 0, 0, 0, 0, 0, Math.log(7)]; // e^log7 = 7 vs seven 1s -> 0.5
+    expect(notLesionProbability(logits, meta)).toBeCloseTo(0.5, 10);
+  });
+
+  it('notLesionProbability is null for 7-output models', () => {
+    expect(notLesionProbability([1, 2, 3, 4, 5, 6, 7], meta)).toBeNull();
+    expect(notLesionProbability([1, 2, 3, 4, 5, 6, 7, 8], { ...meta, not_lesion_index: null })).toBeNull();
+  });
+
+  it('summarizeLogits ignores the 8th output, so disease scores match a 7-output model', () => {
+    const disease = fixture.logit_cases[2].logits;
+    const a = summarizeLogits(disease, meta);
+    const b = summarizeLogits([...disease, 25], meta);
+    expect(b.all_scores).toEqual(a.all_scores);
+    expect(b.status).toBe(a.status);
+    expect(Object.keys(b.all_scores)).toHaveLength(7);
   });
 });

@@ -13,6 +13,7 @@ benchmark_asr.py
 download_asr_model.py
 eval_guards.py
 sweep_guards.py
+export_mobile.py
 Dockerfile
 .dockerignore
 

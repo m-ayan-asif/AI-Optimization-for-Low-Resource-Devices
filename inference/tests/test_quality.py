@@ -135,3 +135,13 @@ class TestLfsPointer:
 
     def test_missing_file_is_not_pointer(self, tmp_path):
         assert q.is_lfs_pointer(str(tmp_path / "nope.pth")) is False
+
+
+class TestNotALesion:
+    def test_success_rejects_at_or_above_threshold(self):
+        assert q.is_not_a_lesion(q.NOT_LESION_THRESHOLD) is True
+        assert q.is_not_a_lesion(0.99) is True
+
+    def test_success_accepts_below_threshold(self):
+        assert q.is_not_a_lesion(q.NOT_LESION_THRESHOLD - 0.01) is False
+        assert q.is_not_a_lesion(0.0) is False

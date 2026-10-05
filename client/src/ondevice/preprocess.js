@@ -274,8 +274,15 @@ export function assessPrediction(confidence, margin, ent, energy, g) {
   return 'classified';
 }
 
-/** Server-shaped prediction from raw logits (same fields /predict returns). */
-export function summarizeLogits(logits, meta) {
+/** Probability of the trained "not a skin lesion" class (8-output models), or null for 7-output models. */
+export function notLesionProbability(logits, meta) {
+  const i = meta.not_lesion_index;
+  return i == null || logits.length <= i ? null : softmax(logits)[i];
+}
+
+/** Server-shaped prediction from raw logits (same fields /predict returns), over the disease logits only. */
+export function summarizeLogits(allLogits, meta) {
+  const logits = allLogits.slice(0, meta.class_names.length);
   const probs = softmax(logits);
   const order = probs.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0]);
   const [top, topIdx] = order[0];

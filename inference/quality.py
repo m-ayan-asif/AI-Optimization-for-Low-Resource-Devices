@@ -22,11 +22,16 @@ BLUR_MAX_SIDE = 512               # measure blur at a bounded resolution
 LOW_CONFIDENCE_THRESHOLD = 0.30
 OOD_ENTROPY_THRESHOLD = 1.65      # ln(7) = 1.946 is the maximum for 7 classes
 OOD_MARGIN_THRESHOLD = 0.08
-# logsumexp(logits) below this => input unlike the training data. Keeps 97.5% of val lesions for the served
-# student_clean_res320_s2.pth (2026-10-05 sweep: 0/36 synthetic and 56/172 real non-skin photos accepted, 2/56
-# curated lesions and 9.2% of clean-test lesions rejected). Model-specific: re-run
-# `sweep_guards.py --model <pth> --img-size <px> --split-suffix _clean` when the model changes (224 px student: 2.37).
-OOD_ENERGY_THRESHOLD = float(os.environ.get("OOD_ENERGY_THRESHOLD", 2.31))
+# logsumexp(disease logits) below this => input unlike the training data. With the "not a skin lesion" output
+# (below) both thresholds keep 99% of val lesions for student_clean_res320_s2_notlesion.pth. 2026-10-06 sweep, both
+# together: 0/36 synthetic, 10/172 real non-skin and 53/1053 held-out DTD/COCO photos accepted; 0/56 curated lesions
+# and 8.1% of clean-test lesions rejected (energy alone at 2.31: 56/172, 410/1053, 2/56, 9.2%). Model-specific: re-run
+# `sweep_guards.py --model <pth> --img-size <px> --split-suffix _clean` when the model changes.
+OOD_ENERGY_THRESHOLD = float(os.environ.get("OOD_ENERGY_THRESHOLD", 2.25))
+
+# Models with the trained "not a skin lesion" class (8 outputs): reject the photo when that class's softmax
+# probability is at least this. Model-specific like the energy threshold; set from sweep_guards.py.
+NOT_LESION_THRESHOLD = float(os.environ.get("NOT_LESION_THRESHOLD", 0.866))
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec"
@@ -99,6 +104,11 @@ def assess_prediction(confidence: float, margin: float, entropy: float, energy: 
     if energy is not None and energy < OOD_ENERGY_THRESHOLD:
         return "out_of_scope"
     return "classified"
+
+
+def is_not_a_lesion(not_lesion_probability: float, threshold: float = NOT_LESION_THRESHOLD) -> bool:
+    """True when an 8-class model says the photo is not a skin lesion at all."""
+    return not_lesion_probability >= threshold
 
 
 def is_lfs_pointer(path: str) -> bool:

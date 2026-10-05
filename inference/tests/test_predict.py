@@ -173,3 +173,43 @@ class TestPredict:
         assert res.status_code == 200
 
 
+
+
+# ─── 8-output models: the trained "not a skin lesion" class ──────────────────
+
+class TestNotALesionClass:
+    """The served model can have an 8th output, "not a skin lesion". A photo that scores high on it is rejected
+    with NOT_A_LESION (like NO_SKIN_DETECTED) instead of getting a diagnosis; otherwise the 7 disease outputs are
+    used exactly as before."""
+
+    def _eight_class_model(self, not_lesion_bias):
+        import torch
+        import server
+        m = server.build_student_large(8)
+        with torch.no_grad():
+            m.classifier[3].bias.zero_()
+            m.classifier[3].bias[7] = not_lesion_bias
+        return m.to(server.DEVICE).eval()
+
+    def _patch(self, monkeypatch, model):
+        import server
+        monkeypatch.setattr(server, "model", model)
+        monkeypatch.setattr(server, "grad_cam", server.GradCAM(model))
+        monkeypatch.setattr(server, "HAS_NOT_LESION_CLASS", True)
+
+    def test_error_rejects_photo_the_model_calls_not_a_lesion(self, client, png_bytes, monkeypatch):
+        self._patch(monkeypatch, self._eight_class_model(not_lesion_bias=50.0))
+        res = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")})
+        assert res.status_code == 400
+        body = res.json()
+        assert body["code"] == "NOT_A_LESION"
+        assert body["not_lesion_probability"] > 0.99
+
+    def test_success_lesion_photo_uses_only_the_seven_disease_outputs(self, client, png_bytes, monkeypatch):
+        self._patch(monkeypatch, self._eight_class_model(not_lesion_bias=-50.0))
+        res = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")})
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body["all_scores"]) == 7
+        assert abs(sum(body["all_scores"].values()) - 1.0) < 0.01
+        assert body["telemetry"]["not_lesion_probability"] < 0.01

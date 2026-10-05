@@ -60,7 +60,8 @@
     "noSkinDetected": "No skin detected. Please upload a clear photo of the affected skin area.",
     "imageTooBlurry": "The image is too blurry for an accurate screening. Please hold your camera steady and retake.",
     "fileTooLarge": "The image file exceeds the 10 MB limit.",
-    "emptyFile": "The uploaded file was empty."
+    "emptyFile": "The uploaded file was empty.",
+    "notALesion": "This photo does not look like a skin condition. Please take a close, clear photo of the affected skin."
   },
   "dashboard": {
     "welcome": "Welcome back",
