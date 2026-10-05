@@ -28,6 +28,7 @@ export default function App() {
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/screening" element={<ScreeningPage />} />
+            <Route path="/results/local/:localId" element={<ResultsPage />} />
             <Route path="/results/:caseId" element={<ResultsPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/clinics" element={<ClinicsPage />} />

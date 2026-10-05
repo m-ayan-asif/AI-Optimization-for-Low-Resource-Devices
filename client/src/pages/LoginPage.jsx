@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import logo from '../assets/logo.png';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -61,7 +62,7 @@ export default function LoginPage() {
           {/* Identity */}
           <div className="flex items-center gap-3 mb-7">
             <img
-              src="/src/assets/logo.png"
+              src={logo}
               alt=""
               className="w-12 h-12 object-contain shrink-0"
             />

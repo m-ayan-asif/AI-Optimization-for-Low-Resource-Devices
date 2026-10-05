@@ -1,6 +1,6 @@
 const db = require('../models/db');
 
-const INFERENCE_URL = process.env.INFERENCE_URL || 'http://localhost:5001';
+const { heatmapUrl } = require('../utils/heatmapUrl');
 
 async function getCases(req, res) {
   try {
@@ -76,10 +76,7 @@ async function getCaseDetail(req, res) {
       symptoms = symResult.rows;
     }
 
-    let heatmap_url = null;
-    if (row.heatmap_path) {
-      heatmap_url = `${INFERENCE_URL}/heatmaps/${row.heatmap_path}`;
-    }
+    const heatmap_url = heatmapUrl(row.heatmap_path);
 
     // Audit: clinician viewed this case
     await db.query(

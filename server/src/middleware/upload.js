@@ -1,5 +1,7 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const config = require('../config');
 
 const storage = multer.diskStorage({
@@ -32,4 +34,19 @@ const audioFilter = (req, file, cb) => {
 const imageUpload = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 10 * 1024 * 1024 } });
 const audioUpload = multer({ storage, fileFilter: audioFilter, limits: { fileSize: 25 * 1024 * 1024 } });
 
-module.exports = { imageUpload, audioUpload };
+// Grad-CAM overlays computed on the phone. Served without auth (an <img> cannot send the bearer token), so the file
+// name is an unguessable UUID, like the inference service's own heatmaps.
+const deviceHeatmapDir = path.join(path.resolve(config.uploadDir), 'device-heatmaps');
+const deviceHeatmapStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    fs.mkdir(deviceHeatmapDir, { recursive: true }, (err) => cb(err, deviceHeatmapDir));
+  },
+  filename: (req, file, cb) => cb(null, `${crypto.randomUUID()}.png`),
+});
+const deviceResultUpload = multer({
+  storage: deviceHeatmapStorage,
+  fileFilter: (req, file, cb) => cb(null, file.mimetype === 'image/png'),
+  limits: { fileSize: 2 * 1024 * 1024, fields: 4 },
+});
+
+module.exports = { imageUpload, audioUpload, deviceResultUpload, deviceHeatmapDir };

@@ -115,6 +115,12 @@ class TestAssessPrediction:
         p = [1 / 7] * 7
         assert q.assess_prediction(p[0], 0.0, q.entropy_from_probs(p)) == "out_of_scope"
 
+    def test_low_energy_is_out_of_scope(self):
+        assert q.assess_prediction(0.85, 0.70, 0.6, energy=q.OOD_ENERGY_THRESHOLD - 0.1) == "out_of_scope"
+
+    def test_high_energy_is_classified(self):
+        assert q.assess_prediction(0.85, 0.70, 0.6, energy=q.OOD_ENERGY_THRESHOLD + 0.1) == "classified"
+
 
 class TestLfsPointer:
     def test_detects_pointer_file(self, tmp_path):

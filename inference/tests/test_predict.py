@@ -159,7 +159,7 @@ class TestPredict:
         assert res.status_code == 400
 
     def test_edge_large_image_is_resized_and_processed(self, client):
-        # The preprocessing pipeline must resize any input to 224×224 before
+        # The preprocessing pipeline must resize any input to IMG_SIZE×IMG_SIZE before
         # feeding it to the model.  A 2048×2048 image must still succeed.
         import io
         import numpy as np

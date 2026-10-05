@@ -37,7 +37,7 @@ import pytest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from server import load_audio_wav, create_heatmap_overlay, GradCAM, model, CLASS_NAMES
+from server import load_audio_wav, create_heatmap_overlay, GradCAM, model, CLASS_NAMES, DEVICE
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ class TestGradCAM:
 
         img = Image.new("RGB", (224, 224), color=(128, 64, 32))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0)
+        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
         cam, class_idx = GradCAM(model).generate(tensor)
         assert cam.ndim == 2
@@ -144,7 +144,7 @@ class TestGradCAM:
 
         img = Image.new("RGB", (224, 224), color=(200, 100, 50))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0)
+        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
         cam, _ = GradCAM(model).generate(tensor)
         assert cam.min() >= 0.0
@@ -157,7 +157,7 @@ class TestGradCAM:
 
         img = Image.new("RGB", (224, 224))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0)
+        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
         _, class_idx = GradCAM(model).generate(tensor)
         assert 0 <= class_idx < len(CLASS_NAMES)
@@ -169,7 +169,7 @@ class TestGradCAM:
 
         img = Image.new("RGB", (224, 224))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0)
+        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
         _, returned_idx = GradCAM(model).generate(tensor, class_idx=2)
         assert returned_idx == 2

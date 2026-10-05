@@ -506,3 +506,151 @@ describe('GET /api/screening/history/list', () => {
     expect(res.body.error).toMatch(/failed to fetch history/i);
   });
 });
+
+// ─── On-device (PWA) results ─────────────────────────────────────────────────
+
+describe('POST /api/screening/:caseId/device-result', () => {
+  const PNG_1X1 = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  const validPrediction = {
+    model_version: 'mobilenetv3-large-dualkd-clean320-v2-onnx',
+    top_condition: 'Vitiligo',
+    confidence_score: 0.83,
+    status: 'classified',
+    all_scores: { Vitiligo: 0.83, Eczema: 0.17 },
+    inference_time_ms: 412,
+    telemetry: { device_type: 'browser-wasm', model_inference_ms: 300 },
+  };
+
+  it('SUCCESS: stores an on-device prediction with its heatmap', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ prediction_id: 77 }] }) // insert prediction
+      .mockResolvedValueOnce({ rows: [] }) // telemetry
+      .mockResolvedValueOnce({ rows: [] }); // update case
+
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/device-result`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('prediction', JSON.stringify(validPrediction))
+      .attach('heatmap', PNG_1X1, { filename: 'heatmap.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('prediction_id', 77);
+    expect(res.body.is_mock).toBe(false);
+    expect(res.body.heatmap_path).toMatch(/^device\/[0-9a-f-]{36}\.png$/);
+    const insert = db.query.mock.calls.find(([sql]) => sql.includes('INSERT INTO predictions'));
+    expect(insert[1][0]).toBe(validPrediction.model_version);
+
+    // The uploaded overlay is served without auth (an <img> cannot send the token) under an unguessable name
+    const file = res.body.heatmap_path.slice('device/'.length);
+    const img = await request(app).get(`/api/device-heatmaps/${file}`);
+    expect(img.status).toBe(200);
+    expect(img.headers['content-type']).toMatch(/image\/png/);
+  });
+
+  it('ERROR: rejects a prediction that does not come from the on-device model', async () => {
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/device-result`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('prediction', JSON.stringify({ ...validPrediction, model_version: 'v0.1.0-mock' }));
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_PREDICTION');
+  });
+
+  it('ERROR: rejects out-of-range scores and malformed JSON', async () => {
+    const bad = await request(app)
+      .post(`/api/screening/${CASE_ID}/device-result`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('prediction', JSON.stringify({ ...validPrediction, all_scores: { Vitiligo: 7 } }));
+    expect(bad.status).toBe(400);
+
+    const junk = await request(app)
+      .post(`/api/screening/${CASE_ID}/device-result`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('prediction', '{not json');
+    expect(junk.status).toBe(400);
+  });
+
+  it('ERROR: returns 403 for another patient case', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 999 }] });
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/device-result`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('prediction', JSON.stringify(validPrediction));
+    expect(res.status).toBe(403);
+  });
+
+  it('ERROR: returns 401 with no auth token', async () => {
+    const res = await request(app).post(`/api/screening/${CASE_ID}/device-result`);
+    expect(res.status).toBe(401);
+  });
+
+  it('ERROR: unknown device heatmap returns 404', async () => {
+    const res = await request(app).get('/api/device-heatmaps/00000000-0000-0000-0000-000000000000.png');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('On-device transcripts and heatmap links', () => {
+  it('SUCCESS: /voice keeps a transcript produced on the device instead of calling ASR', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ transcript_id: 9 }] }) // insert transcript
+      .mockResolvedValueOnce({ rows: [] }); // update case
+
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/voice`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('language', 'ur')
+      .field('deviceTranscript', 'مجھے خارش ہو رہی ہے')
+      .attach('audio', Buffer.from('RIFF....WAVE'), { filename: 'recording.wav', contentType: 'audio/wav' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.transcript_text).toBe('مجھے خارش ہو رہی ہے');
+    expect(res.body.asr_available).toBe(true);
+  });
+
+  it('SUCCESS: results link a device heatmap through the API, not the inference service', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, transcript_id: null, heatmap_path: 'device/abc.png' }] });
+
+    const res = await request(app)
+      .get(`/api/screening/${CASE_ID}/results`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.heatmap_url).toBe('/api/device-heatmaps/abc.png');
+  });
+});
+
+describe('Production inference failure', () => {
+  it('returns 503 instead of a mock prediction when NODE_ENV=production', async () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      let prodApp;
+      let prodDb;
+      jest.isolateModules(() => {
+        prodApp = require('../src/app');
+        prodDb = require('../src/models/db');
+      });
+      prodDb.query
+        .mockResolvedValueOnce({ rows: [{ case_id: CASE_ID, patient_id: 10, image_id: 1 }] }) // ownership
+        .mockResolvedValueOnce({ rows: [{ file_path: '/nonexistent/test_image.jpg' }] }); // image lookup
+
+      const res = await request(prodApp)
+        .post(`/api/screening/${CASE_ID}/inference`)
+        .set('Authorization', `Bearer ${PATIENT_TOKEN}`);
+
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('INFERENCE_UNAVAILABLE');
+      expect(prodDb.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO predictions'))).toBe(false);
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  });
+});

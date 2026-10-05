@@ -39,9 +39,23 @@ from quality import (
 )
 
 # ── Config ────────────────────────────────────────────────────────────
-MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_large_clip_dualkd_distilled.pth")
+# Production student: CLIP dual-KD MobileNetV3-Large trained on the leak-free split at 320 px (seed picked on val):
+# 74.58% test / 70.85 macro-F1 on the clean test set. The older 224 px student is kept for comparison; set
+# MODEL_PATH=./models/student_large_clip_dualkd_distilled.pth IMG_SIZE=224 to serve it.
+MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
-ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "./models/asr/whisper-urdu")
+# Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py, weights in git via LFS) - 23.6% WER vs the
+# turbo's 25.5% on the same FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo
+# (download_asr_model.py) if the fine-tune is missing or still an un-pulled LFS pointer (run `git lfs pull`).
+def _usable_asr_dir(path):
+    weights = os.path.join(path, "model.safetensors")
+    return os.path.isdir(path) and (not os.path.exists(weights) or not is_lfs_pointer(weights))
+
+
+ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH") or next(
+    (p for p in ("./models/asr/whisper-small-urdu-ours", "./models/asr/whisper-urdu") if _usable_asr_dir(p)),
+    "./models/asr/whisper-urdu",
+)
 PORT = int(os.environ.get("INFERENCE_PORT", 5001))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -56,7 +70,7 @@ CLASS_NAMES = [
 ]
 
 NUM_CLASSES = len(CLASS_NAMES)
-IMG_SIZE = 224
+IMG_SIZE = int(os.environ.get("IMG_SIZE", 320))
 
 
 # ── Model Definition ──────────────────────────────────────────────────
@@ -134,7 +148,7 @@ def create_heatmap_overlay(original_image, cam, alpha=0.4):
 
 
 # ── Load Models ───────────────────────────────────────────────────────
-MODEL_VERSION = "mobilenetv3-large-distilled-v1"
+MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-v2")
 print(f"Loading model from {MODEL_PATH} on {DEVICE}...")
 model = build_student_large(NUM_CLASSES)
 MODEL_LOADED = False
@@ -213,7 +227,7 @@ def health():
     return {
         "status": "ok",
         "model": "MobileNetV3-Large (distilled)",
-        "asr_model": "whisper-large-v3-turbo-urdu" if asr_pipe is not None else "not loaded",
+        "asr_model": os.path.basename(os.path.normpath(ASR_MODEL_PATH)) if asr_pipe is not None else "not loaded",
         "device": str(DEVICE),
         "classes": CLASS_NAMES,
         "model_version": MODEL_VERSION,
@@ -294,9 +308,10 @@ async def predict(image: UploadFile = File(...)):
     confidence_score = float(sorted_probs[0].item())
     confidence_margin = confidence_score - float(sorted_probs[1].item())
     entropy = compute_prediction_entropy(probabilities)
+    energy = float(torch.logsumexp(logits[0], dim=0).item())
 
     # ── Phase 3: Out-of-distribution / non-lesion check ──
-    status = assess_prediction(confidence_score, confidence_margin, entropy)
+    status = assess_prediction(confidence_score, confidence_margin, entropy, energy)
 
     # ── Phase 4: Grad-CAM explainability heatmap ──
     start_cam = time.perf_counter()
@@ -328,6 +343,7 @@ async def predict(image: UploadFile = File(...)):
         "device_type": str(DEVICE.type),
         "blur_score": round(blur_score, 1),
         "entropy": round(entropy, 3),
+        "energy": round(energy, 3),
         "confidence_margin": round(confidence_margin, 3),
     }
 

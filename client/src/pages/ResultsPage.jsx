@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useScreening } from '../hooks/useScreening';
 import { getConfidenceColor } from '../utils/imageValidation';
@@ -17,27 +17,51 @@ import {
   Mic,
   Info,
   FlaskConical,
+  Smartphone,
+  CloudOff,
 } from 'lucide-react';
 
 const OUT_OF_SCOPE_THRESHOLD = 0.3;
 const LOW_CONFIDENCE_THRESHOLD = 0.6;
 const SCALE_TICKS = [30, 60, 80];
 
+// A screening analysed on the phone and not uploaded yet, shaped like GET /screening/:id/results.
+async function loadLocalResult(localId) {
+  const { getScreening } = await import('../ondevice/outbox');
+  const r = await getScreening(localId);
+  if (!r) throw new Error('not found');
+  if (r.caseId) return { redirect: r.caseId };
+  const transcript = [r.transcript, r.text?.trim()].filter(Boolean).join('\n\n') || null;
+  return {
+    ...r.prediction,
+    heatmap_url: r.heatmapBlob ? URL.createObjectURL(r.heatmapBlob) : null,
+    transcript_id: r.audioBlob || r.text?.trim() ? 'local' : null,
+    transcript_text: transcript,
+    transcript_language: r.language,
+    pending_sync: true,
+  };
+}
+
 export default function ResultsPage() {
   const { t } = useTranslation();
-  const { caseId } = useParams();
+  const { caseId, localId } = useParams();
+  const navigate = useNavigate();
   const { getResults, loading } = useScreening();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [showHeatmap, setShowHeatmap] = useState(true);
 
   useEffect(() => {
-    if (caseId) {
+    if (localId) {
+      loadLocalResult(localId)
+        .then((d) => (d.redirect ? navigate(`/results/${d.redirect}`, { replace: true }) : setData(d)))
+        .catch(() => setError(t('common.error')));
+    } else if (caseId) {
       getResults(caseId)
         .then(setData)
         .catch((err) => setError(err.response?.data?.error || t('common.error')));
     }
-  }, [caseId, t]);
+  }, [caseId, localId, t, navigate]);
 
   // Loading and Error prioritization: Check error first so failed requests do not hang
   if (error) {
@@ -56,7 +80,7 @@ export default function ResultsPage() {
     );
   }
 
-  if (loading || !data) {
+  if ((loading && !localId) || !data) {
     return (
       <div className="flex justify-center py-24">
         <div className="w-9 h-9 border-2 border-line-strong border-t-brand-800 rounded-pill animate-spin" />
@@ -70,6 +94,7 @@ export default function ResultsPage() {
     data.model_version?.includes('UNTRAINED')
   );
 
+  const onDevice = Boolean(data.pending_sync || data.model_version?.includes('onnx'));
   const isOutOfScope = (data.confidence_score || 0) <= OUT_OF_SCOPE_THRESHOLD;
   const isLowConfidence = !isOutOfScope && (data.confidence_score || 0) < LOW_CONFIDENCE_THRESHOLD;
   const confColor = getConfidenceColor(data.confidence_score);
@@ -90,6 +115,13 @@ export default function ResultsPage() {
         </div>
       )}
 
+      {data.pending_sync && (
+        <div className="notice notice-caution mb-6">
+          <CloudOff size={19} className="text-conf-caution shrink-0 mt-0.5" />
+          <p className="text-body text-ink-800 m-0">{t('results.pendingSync')}</p>
+        </div>
+      )}
+
       {/* ── Report masthead ── */}
       <header className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4 pb-3 border-b-2 border-ink-950">
         <h1 className="text-h1 text-ink-950 m-0">{t('results.title')}</h1>
@@ -97,6 +129,11 @@ export default function ResultsPage() {
           <span className="flex items-center gap-1.5 text-meta text-ink-500 shrink-0 tnum">
             <Clock size={13} />
             {t('results.inferenceTime')} {data.inference_time_ms} {t('common.ms')}
+            {onDevice && (
+              <span className="flex items-center gap-1 ms-2">
+                <Smartphone size={13} /> {t('results.onDevice')}
+              </span>
+            )}
           </span>
         ) : null}
       </header>

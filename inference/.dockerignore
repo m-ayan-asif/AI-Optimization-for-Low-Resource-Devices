@@ -1,0 +1,21 @@
+# Only server.py, quality.py, requirements.txt and the served models go into the image.
+**/__pycache__
+*.pyc
+.pytest_cache
+heatmaps/
+tests/
+test_images/
+*.csv
+*.txt
+!requirements.txt
+train_whisper_urdu.py
+benchmark_asr.py
+download_asr_model.py
+eval_guards.py
+sweep_guards.py
+Dockerfile
+.dockerignore
+
+# ASR: ship only our whisper-small fine-tune; the 3.1 GB turbo and the community checkpoints stay out.
+models/asr/*
+!models/asr/whisper-small-urdu-ours
