@@ -1,10 +1,14 @@
 const db = require('../models/db');
 const fs = require('fs');
 const path = require('path');
+const { heatmapUrl, DEVICE_HEATMAP_PREFIX } = require('../utils/heatmapUrl');
 
 const INFERENCE_URL = process.env.INFERENCE_URL || 'http://localhost:5001';
 const INFERENCE_TIMEOUT_MS = parseInt(process.env.INFERENCE_TIMEOUT_MS, 10) || 12000;
 const MAX_INFERENCE_RETRIES = 2;
+// In production a dead inference service must not turn into a fake diagnosis: return 503 so the PWA can run the
+// model on the device instead. Set ALLOW_MOCK_FALLBACK=true to keep the demo behaviour.
+const MOCK_FALLBACK_ENABLED = process.env.NODE_ENV !== 'production' || process.env.ALLOW_MOCK_FALLBACK === 'true';
 
 // ── Helper: verifyCaseOwnership without breaking non-integer test IDs (e.g. 'c1') ──
 async function verifyCaseOwnership(caseId, patientId) {
@@ -107,7 +111,7 @@ async function uploadImage(req, res) {
 async function submitVoice(req, res) {
   try {
     const { caseId } = req.params;
-    const { language, additionalText } = req.body;
+    const { language, additionalText, deviceTranscript } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided', code: 'EMPTY_AUDIO' });
@@ -117,7 +121,15 @@ async function submitVoice(req, res) {
     const existingCase = await verifyCaseOwnership(caseId, req.user.userId);
 
     let asr;
-    try {
+    if (typeof deviceTranscript === 'string' && deviceTranscript.trim()) {
+      // Transcribed on the phone by the PWA's Whisper (same fine-tune, int8 ONNX); the audio is still kept for review
+      asr = {
+        transcript_text: deviceTranscript.trim().slice(0, 5000),
+        language: language === 'en' ? 'en' : 'ur',
+        confidence_score: null,
+        keywords: [],
+      };
+    } else try {
       asr = await callASRService(req.file.path);
     } catch (asrErr) {
       console.warn('ASR service unavailable, storing audio without transcript:', asrErr.message);
@@ -247,6 +259,10 @@ async function runInference(req, res) {
         });
       }
 
+      if (!MOCK_FALLBACK_ENABLED) {
+        console.error('Inference microservice failed:', inferenceErr.message);
+        return res.status(503).json({ error: 'Inference service unavailable', code: 'INFERENCE_UNAVAILABLE' });
+      }
       console.warn('Inference microservice failed, applying graceful mock fallback:', inferenceErr.message);
       const { generateMockPrediction } = require('../utils/mockData');
       prediction = generateMockPrediction();
@@ -254,75 +270,18 @@ async function runInference(req, res) {
     }
 
     if (!validatePredictionShape(prediction)) {
+      if (!MOCK_FALLBACK_ENABLED) {
+        return res.status(502).json({ error: 'Inference service returned an invalid prediction', code: 'INFERENCE_INVALID' });
+      }
       const { generateMockPrediction } = require('../utils/mockData');
       prediction = generateMockPrediction();
       isMock = true;
     }
 
-    const predResult = await db.query(
-      `INSERT INTO predictions (model_version, top_condition, confidence_score, all_scores, heatmap_path, inference_time_ms)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING prediction_id`,
-      [
-        prediction.model_version || (isMock ? 'v0.1.0-mock' : 'mobilenetv3-large-distilled-v1'),
-        prediction.top_condition,
-        prediction.confidence_score,
-        JSON.stringify(prediction.all_scores),
-        prediction.heatmap_path || null,
-        prediction.inference_time_ms || 0,
-      ]
-    );
-
-    const predictionId = predResult.rows[0].prediction_id;
-
-    // Direct telemetry write to PostgreSQL
-    const telemetry = prediction.telemetry || {};
-    try {
-      await db.query(
-        `INSERT INTO device_telemetry (
-           case_id,
-           image_preprocess_ms,
-           model_inference_ms,
-           gradcam_generation_ms,
-           total_server_time_ms,
-           server_ram_used_mb,
-           gpu_vram_used_mb,
-           device_type,
-           blur_score,
-           entropy,
-           confidence_margin
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT (case_id) DO UPDATE SET
-           image_preprocess_ms = EXCLUDED.image_preprocess_ms,
-           model_inference_ms = EXCLUDED.model_inference_ms,
-           gradcam_generation_ms = EXCLUDED.gradcam_generation_ms,
-           total_server_time_ms = EXCLUDED.total_server_time_ms,
-           server_ram_used_mb = EXCLUDED.server_ram_used_mb,
-           gpu_vram_used_mb = EXCLUDED.gpu_vram_used_mb,
-           device_type = EXCLUDED.device_type,
-           blur_score = EXCLUDED.blur_score,
-           entropy = EXCLUDED.entropy,
-           confidence_margin = EXCLUDED.confidence_margin`,
-        [
-          existingCase.case_id,
-          telemetry.image_preprocess_ms ?? null,
-          telemetry.model_inference_ms ?? prediction.inference_time_ms ?? null,
-          telemetry.gradcam_generation_ms ?? null,
-          telemetry.total_server_time_ms ?? null,
-          telemetry.server_ram_used_mb ?? null,
-          telemetry.gpu_vram_used_mb ?? null,
-          telemetry.device_type ?? 'cpu',
-          telemetry.blur_score ?? null,
-          telemetry.entropy ?? null,
-          telemetry.confidence_margin ?? null
-        ]
-      );
-    } catch (telErr) {
-      console.warn('Telemetry insertion warning:', telErr.message);
-    }
-
-    await db.query(
-      'UPDATE screening_cases SET prediction_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text',
-      [predictionId, existingCase.case_id]
+    const predictionId = await storePrediction(
+      existingCase.case_id,
+      prediction,
+      prediction.model_version || (isMock ? 'v0.1.0-mock' : 'mobilenetv3-large-distilled-v1')
     );
 
     res.json({
@@ -336,6 +295,135 @@ async function runInference(req, res) {
     }
     console.error('Inference error:', err);
     res.status(500).json({ error: 'Inference failed', code: 'INFERENCE_FAILURE' });
+  }
+}
+
+// Stores a prediction (server- or device-side) and its telemetry row, and links it to the case. Returns prediction_id.
+async function storePrediction(caseId, prediction, modelVersion) {
+  const predResult = await db.query(
+    `INSERT INTO predictions (model_version, top_condition, confidence_score, all_scores, heatmap_path, inference_time_ms)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING prediction_id`,
+    [
+      modelVersion,
+      prediction.top_condition,
+      prediction.confidence_score,
+      JSON.stringify(prediction.all_scores),
+      prediction.heatmap_path || null,
+      prediction.inference_time_ms || 0,
+    ]
+  );
+
+  const predictionId = predResult.rows[0].prediction_id;
+
+  // Direct telemetry write to PostgreSQL
+  const telemetry = prediction.telemetry || {};
+  try {
+    await db.query(
+      `INSERT INTO device_telemetry (
+         case_id,
+         image_preprocess_ms,
+         model_inference_ms,
+         gradcam_generation_ms,
+         total_server_time_ms,
+         server_ram_used_mb,
+         gpu_vram_used_mb,
+         device_type,
+         blur_score,
+         entropy,
+         confidence_margin
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (case_id) DO UPDATE SET
+         image_preprocess_ms = EXCLUDED.image_preprocess_ms,
+         model_inference_ms = EXCLUDED.model_inference_ms,
+         gradcam_generation_ms = EXCLUDED.gradcam_generation_ms,
+         total_server_time_ms = EXCLUDED.total_server_time_ms,
+         server_ram_used_mb = EXCLUDED.server_ram_used_mb,
+         gpu_vram_used_mb = EXCLUDED.gpu_vram_used_mb,
+         device_type = EXCLUDED.device_type,
+         blur_score = EXCLUDED.blur_score,
+         entropy = EXCLUDED.entropy,
+         confidence_margin = EXCLUDED.confidence_margin`,
+      [
+        caseId,
+        telemetry.image_preprocess_ms ?? null,
+        telemetry.model_inference_ms ?? prediction.inference_time_ms ?? null,
+        telemetry.gradcam_generation_ms ?? null,
+        telemetry.total_server_time_ms ?? null,
+        telemetry.server_ram_used_mb ?? null,
+        telemetry.gpu_vram_used_mb ?? null,
+        telemetry.device_type ?? 'cpu',
+        telemetry.blur_score ?? null,
+        telemetry.entropy ?? null,
+        telemetry.confidence_margin ?? null
+      ]
+    );
+  } catch (telErr) {
+    console.warn('Telemetry insertion warning:', telErr.message);
+  }
+
+  await db.query(
+    'UPDATE screening_cases SET prediction_id = $1, updated_at = CURRENT_TIMESTAMP WHERE case_id::text = $2::text',
+    [predictionId, caseId]
+  );
+
+  return predictionId;
+}
+
+const MAX_SCORE_ENTRIES = 32;
+
+function removeUploaded(file) {
+  if (file?.path) fs.promises.unlink(file.path).catch(() => {});
+}
+
+// POST /:caseId/device-result — a prediction computed on the phone by the PWA (ONNX student + Grad-CAM), with the
+// heatmap PNG as an optional multipart file. Stored like a server prediction so history, clinician review and the
+// monitoring dashboard need no special cases; model_version (ending in -onnx) records where it ran.
+async function submitDeviceResult(req, res) {
+  try {
+    const { caseId } = req.params;
+    let prediction = null;
+    try {
+      prediction = JSON.parse(req.body.prediction || 'null');
+    } catch (_) {
+      prediction = null;
+    }
+
+    const scores = prediction?.all_scores;
+    const scoresValid = Boolean(scores) && typeof scores === 'object' && !Array.isArray(scores) &&
+      Object.keys(scores).length <= MAX_SCORE_ENTRIES &&
+      Object.values(scores).every((v) => typeof v === 'number' && v >= 0 && v <= 1);
+    if (!validatePredictionShape(prediction) || !scoresValid ||
+        typeof prediction.model_version !== 'string' || !prediction.model_version.includes('onnx')) {
+      removeUploaded(req.file);
+      return res.status(400).json({ error: 'Invalid on-device prediction', code: 'INVALID_PREDICTION' });
+    }
+
+    let existingCase;
+    try {
+      existingCase = await verifyCaseOwnership(caseId, req.user.userId);
+    } catch (err) {
+      removeUploaded(req.file);
+      throw err;
+    }
+
+    const stored = {
+      top_condition: prediction.top_condition.slice(0, 100),
+      confidence_score: prediction.confidence_score,
+      all_scores: scores,
+      heatmap_path: req.file ? `${DEVICE_HEATMAP_PREFIX}${req.file.filename}` : null,
+      inference_time_ms: Math.max(0, Math.round(Number(prediction.inference_time_ms) || 0)),
+      telemetry: prediction.telemetry && typeof prediction.telemetry === 'object' ? prediction.telemetry : {},
+    };
+    const modelVersion = prediction.model_version.slice(0, 100);
+    const predictionId = await storePrediction(existingCase.case_id, stored, modelVersion);
+
+    res.json({ prediction_id: predictionId, model_version: modelVersion, ...stored, is_mock: false });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    console.error('Device result error:', err);
+    res.status(500).json({ error: 'Failed to store on-device result', code: 'DEVICE_RESULT_ERROR' });
   }
 }
 
@@ -486,10 +574,7 @@ async function getResults(req, res) {
       symptoms = symResult.rows;
     }
 
-    let heatmap_url = null;
-    if (row.heatmap_path) {
-      heatmap_url = `${INFERENCE_URL}/heatmaps/${row.heatmap_path}`;
-    }
+    const heatmap_url = heatmapUrl(row.heatmap_path);
 
     const isMock = Boolean(
       row.model_version?.includes('mock') ||
@@ -533,6 +618,7 @@ module.exports = {
   submitVoice,
   submitTextInput,
   runInference,
+  submitDeviceResult,
   getResults,
   getHistory,
 };
