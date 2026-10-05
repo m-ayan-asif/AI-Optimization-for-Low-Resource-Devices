@@ -60,8 +60,14 @@ NORM = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225
 AUG = [transforms.RandomHorizontalFlip(), transforms.RandomVerticalFlip(), transforms.RandomRotation(15),
        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1))]
-train_transform = transforms.Compose([transforms.Resize((IMG_SIZE, IMG_SIZE)), *AUG, transforms.ToTensor(), NORM])
-val_transform = transforms.Compose([transforms.Resize((IMG_SIZE, IMG_SIZE)), transforms.ToTensor(), NORM])
+
+
+def student_transforms(size):
+    return (transforms.Compose([transforms.Resize((size, size)), *AUG, transforms.ToTensor(), NORM]),
+            transforms.Compose([transforms.Resize((size, size)), transforms.ToTensor(), NORM]))
+
+
+train_transform, val_transform = student_transforms(IMG_SIZE)
 b3_train_transform = transforms.Compose([transforms.Resize((B3_SIZE, B3_SIZE)), *AUG, transforms.ToTensor(), NORM])
 
 
@@ -88,8 +94,8 @@ class SkinDataset(Dataset):
 
 
 class DistillDataset(Dataset):
-    def __init__(self, csv_path, clip_probs):
-        self.df, self.clip_probs = pd.read_csv(csv_path), clip_probs
+    def __init__(self, csv_path, clip_probs, transform=train_transform):
+        self.df, self.clip_probs, self.transform = pd.read_csv(csv_path), clip_probs, transform
 
     def __len__(self):
         return len(self.df)
@@ -97,7 +103,7 @@ class DistillDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         image = load_rgb(row["image_path"])
-        return train_transform(image), b3_train_transform(image), self.clip_probs[idx], row["numeric_label"]
+        return self.transform(image), b3_train_transform(image), self.clip_probs[idx], row["numeric_label"]
 
 
 def build_teacher(pretrained=False):
@@ -147,15 +153,39 @@ def main():
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--teacher", default=TEACHER_CHECKPOINT, help="EfficientNet-B3 checkpoint (e.g. from train_teacher.py)")
     ap.add_argument("--epochs", type=int, default=NUM_EPOCHS)
+    ap.add_argument("--val-csv", default=VAL_CSV)
+    ap.add_argument("--test-csv", default=TEST_CSV)
+    ap.add_argument("--img-size", type=int, default=IMG_SIZE, help="student input resolution (teacher stays at B3_SIZE)")
+    ap.add_argument("--mix", choices=["none", "mixup", "cutmix"], default="none",
+                    help="mix both views of a batch with the same lambda; KD targets come from the mixed inputs")
+    ap.add_argument("--mix-alpha", type=float, default=0.4, help="Beta(alpha, alpha) for the mixing ratio")
+    ap.add_argument("--ens-teacher", default="", help="comma-separated student checkpoints averaged as the teacher "
+                                                      "(replaces the EfficientNet-B3; members see the student's view)")
     ap.add_argument("--limit", type=int, default=0, help="smoke test: use only the first N train rows")
     args = ap.parse_args()
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = f"../models/student_large_clip_dualkd_{args.run_name}.pth"
-    print(f"run={args.run_name} train={args.train_csv} teacher={args.teacher} seed={args.seed} device={device}", flush=True)
+    print(f"run={args.run_name} train={args.train_csv} teacher={args.ens_teacher or args.teacher} mix={args.mix} seed={args.seed} img_size={args.img_size} device={device}", flush=True)
+    student_train_tf, student_val_tf = student_transforms(args.img_size)
 
-    teacher = build_teacher(); teacher.load_state_dict(torch.load(args.teacher, map_location=device, weights_only=True))
-    teacher = teacher.to(device).eval().requires_grad_(False)
+    if args.ens_teacher:
+        members = []
+        for p in args.ens_teacher.split(","):
+            m = build_student(pretrained=False); m.load_state_dict(torch.load(p, map_location=device, weights_only=True))
+            members.append(m.to(device).eval().requires_grad_(False))
+        args.teacher = args.ens_teacher
+
+        def teacher_logits(s_img, t_img):
+            # mean of the members' temperature-softened probs, as logits that dual_kd_loss turns back into that mean
+            probs = torch.stack([F.softmax(m(s_img) / TEMPERATURE, dim=1) for m in members]).mean(0)
+            return TEMPERATURE * torch.log(probs.clamp_min(1e-8))
+    else:
+        teacher = build_teacher(); teacher.load_state_dict(torch.load(args.teacher, map_location=device, weights_only=True))
+        teacher = teacher.to(device).eval().requires_grad_(False)
+
+        def teacher_logits(s_img, t_img):
+            return teacher(t_img)
 
     clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(CLIP_MODEL_NAME, pretrained=CLIP_PRETRAINED)
     clip_model = clip_model.to(device).eval().requires_grad_(False)
@@ -180,7 +210,7 @@ def main():
         smoke = f"../models/_smoke_{args.run_name}.csv"; pd.read_csv(args.train_csv).sample(args.limit, random_state=0).to_csv(smoke, index=False)
         args.train_csv = smoke
     t0 = time.time()
-    clip_train, clip_test = clip_probs(args.train_csv), clip_probs(TEST_CSV)
+    clip_train, clip_test = clip_probs(args.train_csv), clip_probs(args.test_csv)
     del clip_model; torch.cuda.empty_cache()
     print(f"CLIP soft targets precomputed in {time.time() - t0:.0f}s: train {tuple(clip_train.shape)}", flush=True)
 
@@ -189,9 +219,9 @@ def main():
     sampler = WeightedRandomSampler((1.0 / counts)[labels], num_samples=len(labels), replacement=True,
                                     generator=torch.Generator().manual_seed(args.seed))
     kw = dict(num_workers=args.workers, pin_memory=True, persistent_workers=args.workers > 0)
-    distill_loader = DataLoader(DistillDataset(args.train_csv, clip_train), batch_size=16, sampler=sampler, **kw)
-    val_loader = DataLoader(SkinDataset(VAL_CSV, val_transform), batch_size=32, shuffle=False, **kw)
-    test_loader = DataLoader(SkinDataset(TEST_CSV, val_transform), batch_size=32, shuffle=False, **kw)
+    distill_loader = DataLoader(DistillDataset(args.train_csv, clip_train, student_train_tf), batch_size=16, sampler=sampler, **kw)
+    val_loader = DataLoader(SkinDataset(args.val_csv, student_val_tf), batch_size=32, shuffle=False, **kw)
+    test_loader = DataLoader(SkinDataset(args.test_csv, student_val_tf), batch_size=32, shuffle=False, **kw)
 
     student = build_student().to(device)
     opt = torch.optim.Adam(student.parameters(), lr=0.0001, weight_decay=1e-4)
@@ -201,11 +231,29 @@ def main():
         t0 = time.time(); student.train(); run_loss = correct = total = 0
         for s_img, t_img, cp, y in distill_loader:
             s_img, t_img, cp, y = s_img.to(device), t_img.to(device), cp.to(device), y.to(device)
+            lam, perm = 1.0, None
+            if args.mix != "none":
+                lam, perm = float(np.random.beta(args.mix_alpha, args.mix_alpha)), torch.randperm(y.size(0), device=device)
+                if args.mix == "mixup":
+                    s_img, t_img = lam * s_img + (1 - lam) * s_img[perm], lam * t_img + (1 - lam) * t_img[perm]
+                else:  # same relative box in both views (they differ in size)
+                    r, (cx, cy) = (1 - lam) ** 0.5, np.random.rand(2)
+                    for img in (s_img, t_img):
+                        H, W = img.shape[2:]
+                        y1, y2 = int(np.clip((cy - r / 2) * H, 0, H)), int(np.clip((cy + r / 2) * H, 0, H))
+                        x1, x2 = int(np.clip((cx - r / 2) * W, 0, W)), int(np.clip((cx + r / 2) * W, 0, W))
+                        img[:, :, y1:y2, x1:x2] = img[perm][:, :, y1:y2, x1:x2]
+                    lam = 1 - (y2 - y1) * (x2 - x1) / (H * W)
+                cp = lam * cp + (1 - lam) * cp[perm]
             opt.zero_grad()
             s_logits = student(s_img)
             with torch.no_grad():
-                t_logits = teacher(t_img)
-            loss = dual_kd_loss(s_logits, t_logits, cp, y); loss.backward(); opt.step()
+                t_logits = teacher_logits(s_img, t_img)
+            # the KD terms already see mixed inputs/targets, so only the hard-label term needs the two labels
+            loss = dual_kd_loss(s_logits, t_logits, cp, y)
+            if perm is not None:
+                loss = lam * loss + (1 - lam) * dual_kd_loss(s_logits, t_logits, cp, y[perm])
+            loss.backward(); opt.step()
             run_loss += loss.item(); correct += (s_logits.argmax(1) == y).sum().item(); total += y.size(0)
         vl, vy = logits_of(student, val_loader, device)
         val_loss = F.cross_entropy(vl, vy).item(); val_acc = 100 * (vl.argmax(1) == vy).float().mean().item()
@@ -223,10 +271,11 @@ def main():
             print(f"early stop at epoch {epoch}", flush=True); break
 
     student.load_state_dict(torch.load(ckpt, map_location=device, weights_only=True))
-    results = {"run": args.run_name, "train_csv": args.train_csv, "seed": args.seed, "teacher": args.teacher,
+    results = {"run": args.run_name, "train_csv": args.train_csv, "val_csv": args.val_csv, "test_csv": args.test_csv, "seed": args.seed, "teacher": args.teacher, "img_size": args.img_size,
+               "mix": args.mix, "mix_alpha": args.mix_alpha if args.mix != "none" else None,
                "train_class_counts": dict(zip(CLASS_NAMES, counts.tolist())), "history": history,
                "test": report(*logits_of(student, test_loader, device)),
-               "clip_alone_test_accuracy": round(100 * accuracy_score(pd.read_csv(TEST_CSV)["numeric_label"], clip_test.argmax(1)), 2)}
+               "clip_alone_test_accuracy": round(100 * accuracy_score(pd.read_csv(args.test_csv)["numeric_label"], clip_test.argmax(1)), 2)}
     if os.path.exists(PRODUCTION_STUDENT):
         prod = build_student(pretrained=False).to(device)
         prod.load_state_dict(torch.load(PRODUCTION_STUDENT, map_location=device, weights_only=True))
