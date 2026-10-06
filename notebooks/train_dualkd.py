@@ -23,6 +23,9 @@ from PIL import Image
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 
 CLASS_NAMES = ["Vitiligo", "Melasma", "Psoriasis", "Eczema", "Tinea", "Contact Dermatitis", "Seborrheic Dermatitis"]
+# Optional 8th class (--neg-train-csv): photos that are not skin lesions at all (textures, scenes, objects). The teacher
+# and CLIP only know the 7 diseases, so their KD terms apply to lesion images only; the extra class learns from labels.
+NOT_LESION = "Not a skin lesion"
 IMG_SIZE, B3_SIZE = 224, 300
 CLIP_MODEL_NAME, CLIP_PRETRAINED = "ViT-B-32-quickgelu", "openai"
 TEMPERATURE, ALPHA, BLEND_WEIGHT = 4, 0.7, 0.3
@@ -82,15 +85,16 @@ def load_rgb(path):
 
 
 class SkinDataset(Dataset):
-    def __init__(self, csv_path, transform):
-        self.df, self.transform = pd.read_csv(csv_path), transform
+    def __init__(self, csv_path, transform, fixed_label=None):
+        self.df, self.transform, self.fixed_label = pd.read_csv(csv_path), transform, fixed_label
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        return self.transform(load_rgb(row["image_path"])), row["numeric_label"]
+        label = self.fixed_label if self.fixed_label is not None else row["numeric_label"]
+        return self.transform(load_rgb(row["image_path"])), label
 
 
 class DistillDataset(Dataset):
@@ -113,18 +117,26 @@ def build_teacher(pretrained=False):
     return m
 
 
-def build_student(pretrained=True):
+def build_student(pretrained=True, num_classes=len(CLASS_NAMES)):
     m = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.IMAGENET1K_V1 if pretrained else None)
     m.classifier = nn.Sequential(nn.Linear(m.classifier[0].in_features, 512), nn.Hardswish(), nn.Dropout(p=0.3),
-                                 nn.Linear(512, len(CLASS_NAMES)))
+                                 nn.Linear(512, num_classes))
     return m
 
 
 def dual_kd_loss(student_logits, teacher_logits, clip_probs, labels):
-    teacher_kd = F.kl_div(F.log_softmax(student_logits / TEMPERATURE, dim=1),
-                          F.softmax(teacher_logits / TEMPERATURE, dim=1), reduction="batchmean") * TEMPERATURE ** 2
-    clip_kd = F.kl_div(F.log_softmax(student_logits, dim=1), clip_probs, reduction="batchmean")
+    # KD only on lesion images, over the 7 disease logits. Without negatives every row is a lesion and the student
+    # has exactly 7 logits, so this is the original loss unchanged.
+    d = len(CLASS_NAMES)
+    pos = labels < d
     hard = F.cross_entropy(student_logits, labels, label_smoothing=0.1)
+    if not pos.any():
+        return ALPHA_HARD * hard
+    s = student_logits[pos, :d]
+    n = pos.sum()
+    teacher_kd = F.kl_div(F.log_softmax(s / TEMPERATURE, dim=1), F.softmax(teacher_logits[pos] / TEMPERATURE, dim=1),
+                          reduction="sum") / n * TEMPERATURE ** 2
+    clip_kd = F.kl_div(F.log_softmax(s, dim=1), clip_probs[pos], reduction="sum") / n
     return ALPHA_TEACHER * teacher_kd + ALPHA_CLIP * clip_kd + ALPHA_HARD * hard
 
 
@@ -162,12 +174,30 @@ def main():
     ap.add_argument("--ens-teacher", default="", help="comma-separated student checkpoints averaged as the teacher "
                                                       "(replaces the EfficientNet-B3; members see the student's view)")
     ap.add_argument("--limit", type=int, default=0, help="smoke test: use only the first N train rows")
+    ap.add_argument("--neg-train-csv", default="", help="adds an 8th class, NOT_LESION, from these images (image_path column)")
+    ap.add_argument("--neg-val-csv", default="")
+    ap.add_argument("--neg-test-csv", default="")
     args = ap.parse_args()
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = f"../models/student_large_clip_dualkd_{args.run_name}.pth"
     print(f"run={args.run_name} train={args.train_csv} teacher={args.ens_teacher or args.teacher} mix={args.mix} seed={args.seed} img_size={args.img_size} device={device}", flush=True)
     student_train_tf, student_val_tf = student_transforms(args.img_size)
+    D = len(CLASS_NAMES)
+    use_neg = bool(args.neg_train_csv)
+    num_classes = D + 1 if use_neg else D
+    all_names = CLASS_NAMES + [NOT_LESION] if use_neg else CLASS_NAMES
+
+    def with_negatives(pos_csv, neg_csv, tag):
+        """CSV of the lesion rows followed by the negative rows labelled NOT_LESION (index 7)."""
+        if not neg_csv:
+            return pos_csv
+        neg = pd.read_csv(neg_csv).assign(unified_label=NOT_LESION, numeric_label=D)
+        neg["source"] = neg.get("source", "negatives")
+        out = f"../models/_neg_{args.run_name}_{tag}.csv"
+        pd.concat([pd.read_csv(pos_csv), neg[["image_path", "unified_label", "numeric_label", "source"]]],
+                  ignore_index=True).to_csv(out, index=False)
+        return out
 
     if args.ens_teacher:
         members = []
@@ -210,20 +240,27 @@ def main():
         smoke = f"../models/_smoke_{args.run_name}.csv"; pd.read_csv(args.train_csv).sample(args.limit, random_state=0).to_csv(smoke, index=False)
         args.train_csv = smoke
     t0 = time.time()
+    n_pos_train = len(pd.read_csv(args.train_csv))
     clip_train, clip_test = clip_probs(args.train_csv), clip_probs(args.test_csv)
+    if use_neg:  # CLIP targets exist for lesion rows only; negative rows get zeros, masked out in dual_kd_loss
+        args.train_csv = with_negatives(args.train_csv, args.neg_train_csv, "train")
+        clip_train = torch.cat([clip_train, torch.zeros(len(pd.read_csv(args.train_csv)) - n_pos_train, D)])
     del clip_model; torch.cuda.empty_cache()
     print(f"CLIP soft targets precomputed in {time.time() - t0:.0f}s: train {tuple(clip_train.shape)}", flush=True)
 
     labels = pd.read_csv(args.train_csv)["numeric_label"].values
-    counts = np.bincount(labels, minlength=len(CLASS_NAMES)); print("class counts:", dict(zip(CLASS_NAMES, counts.tolist())), flush=True)
-    sampler = WeightedRandomSampler((1.0 / counts)[labels], num_samples=len(labels), replacement=True,
+    counts = np.bincount(labels, minlength=num_classes); print("class counts:", dict(zip(all_names, counts.tolist())), flush=True)
+    # Class-balanced sampling; with negatives the epoch keeps the same number of lesion draws (+1/7 for the new class)
+    epoch_len = n_pos_train + (n_pos_train // D if use_neg else 0)
+    sampler = WeightedRandomSampler((1.0 / counts)[labels], num_samples=epoch_len, replacement=True,
                                     generator=torch.Generator().manual_seed(args.seed))
     kw = dict(num_workers=args.workers, pin_memory=True, persistent_workers=args.workers > 0)
     distill_loader = DataLoader(DistillDataset(args.train_csv, clip_train, student_train_tf), batch_size=16, sampler=sampler, **kw)
-    val_loader = DataLoader(SkinDataset(args.val_csv, student_val_tf), batch_size=32, shuffle=False, **kw)
+    val_loader = DataLoader(SkinDataset(with_negatives(args.val_csv, args.neg_val_csv, "val"), student_val_tf),
+                            batch_size=32, shuffle=False, **kw)
     test_loader = DataLoader(SkinDataset(args.test_csv, student_val_tf), batch_size=32, shuffle=False, **kw)
 
-    student = build_student().to(device)
+    student = build_student(num_classes=num_classes).to(device)
     opt = torch.optim.Adam(student.parameters(), lr=0.0001, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", patience=3, factor=0.5)
     best, bad, history = float("inf"), 0, []
@@ -274,8 +311,19 @@ def main():
     results = {"run": args.run_name, "train_csv": args.train_csv, "val_csv": args.val_csv, "test_csv": args.test_csv, "seed": args.seed, "teacher": args.teacher, "img_size": args.img_size,
                "mix": args.mix, "mix_alpha": args.mix_alpha if args.mix != "none" else None,
                "train_class_counts": dict(zip(CLASS_NAMES, counts.tolist())), "history": history,
-               "test": report(*logits_of(student, test_loader, device)),
+               "num_classes": num_classes, "neg_train_csv": args.neg_train_csv or None,
+               # lesion test images, forced to a disease (7 logits) - comparable with every earlier run
+               "test": report(*(lambda lo, y: (lo[:, :D], y))(*logits_of(student, test_loader, device))),
                "clip_alone_test_accuracy": round(100 * accuracy_score(pd.read_csv(args.test_csv)["numeric_label"], clip_test.argmax(1)), 2)}
+    if use_neg:
+        lo, _ = logits_of(student, test_loader, device)
+        rejected = lo.argmax(1) == D
+        results["lesions_rejected_as_not_lesion"] = round(100 * rejected.float().mean().item(), 2)
+        if args.neg_test_csv:
+            neg_loader = DataLoader(SkinDataset(args.neg_test_csv, student_val_tf, fixed_label=D), batch_size=32, shuffle=False, **kw)
+            nl, _ = logits_of(student, neg_loader, device)
+            results["negatives_rejected"] = round(100 * (nl.argmax(1) == D).float().mean().item(), 2)
+            results["negatives_test_n"] = len(nl)
     if os.path.exists(PRODUCTION_STUDENT):
         prod = build_student(pretrained=False).to(device)
         prod.load_state_dict(torch.load(PRODUCTION_STUDENT, map_location=device, weights_only=True))
@@ -283,6 +331,9 @@ def main():
     json.dump(results, open(f"../models/dualkd_{args.run_name}_results.json", "w", encoding="utf-8"), indent=1)
     r = results["test"]
     print(f"RESULT {args.run_name}: test acc {r['accuracy']}% | top-3 {r['top3_accuracy']}% | macro-F1 {r['macro_f1']}%", flush=True)
+    if use_neg:
+        print(f"  lesions rejected as not-a-lesion: {results['lesions_rejected_as_not_lesion']}% | "
+              f"held-out negatives rejected: {results.get('negatives_rejected')}%", flush=True)
     for c in CLASS_NAMES:
         pc = r["per_class"][c]; print(f"  {c:22s} recall {100 * pc['recall']:.1f}%  f1 {100 * pc['f1-score']:.1f}%  (n={int(pc['support'])})")
 

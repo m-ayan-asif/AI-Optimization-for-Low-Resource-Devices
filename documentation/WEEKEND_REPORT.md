@@ -16,7 +16,7 @@ Detailed companion notes:
 |---|---|---|
 | Image classifier | MobileNetV3-Large student, 3.47M params, 14 MB. Distilled from an EfficientNet-B3 teacher **and** CLIP, using two separate KL terms ("dual-KD"). Trained on the cleaned splits at **320×320** input. | **73.70 ± 0.81 %** test accuracy, 96.59 % top-3, 70.44 macro-F1 (3 seeds, clean split) |
 | Speech-to-text (`/transcribe`) | Our own whisper-small Urdu fine-tune (244M params). It replaces a 3.2 GB whisper-large-v3-turbo Urdu model. | Ties the turbo on unseen speech (29.8 vs 30.2 % WER) at about a third of the compute |
-| Input guards | Skin-colour pre-filter (threshold 0.15 → 0.05) plus a new **energy** out-of-distribution score, on top of the existing blur, confidence and entropy checks; threshold re-tuned for the 320 model (2.31) | Synthetic false accepts 5/36 → 0/36; real non-skin photos given a diagnosis 81/172 → 56/172 |
+| Input guards | Skin-colour pre-filter (threshold 0.15 → 0.05), a new **energy** out-of-distribution score, and (Monday night) a trained **"not a skin lesion" output** that rejects the photo, on top of the existing blur, confidence and entropy checks | Real non-skin photos given a diagnosis 81/172 → **10/172**; synthetic 5/36 → 0/36; real lesions wrongly rejected 9.2 % → 8.1 % |
 | Deployment | **PC:** Docker Compose (Postgres, Express, CPU inference, Caddy with HTTPS). **Phone:** installable PWA that runs the skin model *and* Whisper on the device, offline, and syncs when back online | Phone models: 13 MB skin model (bit-exact with PyTorch, 74.71 % clean test) + 330 MB int8 Whisper (23.3 % WER vs 23.6 % PyTorch) |
 | Full server footprint (CPU) | 320 student + our whisper-small | **2.85 GB peak RAM** (the old turbo stack peaked at 4.71 GB) |
 
@@ -350,6 +350,7 @@ Retrained on the clean splits, 3 seeds each. These are **the only accuracy numbe
 | Position-based label masking in Whisper training | Value-based (`== pad`) masking | Value masking hid end-of-text and gave 95.7 % WER |
 | CLIP-embedding duplicate filter | 64-bit dHash | dHash discarded real, unrelated images |
 | Energy OOD score + skin threshold 0.05 | Skin threshold alone; Mahalanobis; k-NN | Fewer false accepts *and* fewer rejected lesions |
+| "Not a skin lesion" output fitted on the **frozen** student | Training the 8th class jointly; thresholds only | Same rejection quality, zero cost to disease accuracy (joint training lost 1.6 points) |
 | 320 px input | 224 px | +1.7 accuracy and +2.5 macro-F1 on the clean split, beyond the seed spread |
 | Clean splits for all reported numbers | Original splits | 13.6–16.6 % train→test leak |
 | 3 seeds per arm, report mean ± sd | Single runs | ±0.4 seed spread; about 2 points from GPU nondeterminism alone |
@@ -367,6 +368,7 @@ Retrained on the clean splits, 3 seeds each. These are **the only accuracy numbe
 | Mixup | 71.57 ± 0.95 | 3 points worse; blending lesions destroys the texture cues |
 | Flip TTA | +0.08 | Costs 4× the inference |
 | 9-student ensemble on device | ≈77.5 % | 9–36× compute. Kept as an option for the online branch C only. |
+| 8th class trained jointly with the diseases | 72.10 ± 1.62 % vs 73.70 ± 0.81 % disease accuracy; Psoriasis recall 69.7 → 62.8 | Failed the bar set before training (no accuracy loss beyond seed noise). Scaly and cracked textures in the negatives probably pulled psoriasis plaques toward "not a lesion" |
 | Generic `whisper-medium`, `whisper-large-v3-urdu`, CT2 turbo | – | Too large, or no browser/phone runtime |
 | SkinCAP / Fitzpatrick17k access forms | – | Team declined the paperwork |
 | Pre-re-split teacher (`.bench/models_before_retrain/teacher_final.pth`) | 78.6 % on today's test | Saw test images; never use it |
@@ -378,9 +380,7 @@ Retrained on the clean splits, 3 seeds each. These are **the only accuracy numbe
    - Remove the 31 histology images.
 2. **Group-aware split.** Keep all near-duplicates of one lesion in the same split so the leak cannot come back, then retrain **once**. Stop tuning methods.
 3. **Re-tune the guards** for any future served model (done for the 320 student: 2.31), and update every place that still quotes 74.98 %.
-4. **Non-skin photos:** about 37 % of real non-skin photos still get a diagnosis. Options:
-   - a trained "not a lesion" class or outlier exposure (CLIP can mine the negatives at training time only);
-   - branch C's CLIP gate when online.
+4. **Non-skin photos:** mostly solved (section 11). 10/172 real non-skin photos still get a diagnosis, down from 56. The misses are pale, furry or textured scenes (a white dog on a speckled counter). More such photos in the negative set, or branch C's CLIP gate when online, would close the gap.
 5. **Real-voice ASR test.** Record the 12 lines in `data/raw/asr/user_recordings/refs.tsv` and score both models. Watch خارش → خارج.
 6. **Benchmark table:** rows for branches B and C on the clean split are still missing.
 7. **Report framing:**
@@ -488,3 +488,45 @@ All on this machine against the real Docker stack, with a headless Edge browser 
 | Pillow/OpenCV preprocessing ported to JS | Canvas resize | Guarantees the phone sees the same pixels as the evaluation; pinned by tests |
 | Docker Compose + Caddy | Native start scripts | One command on any PC/VPS; automatic HTTPS, which the PWA requires |
 | No mock fallback in production | Keep the demo fallback | A fake prediction must never reach a patient |
+
+
+## 11. "Not a skin lesion" output (Monday night)
+
+**Problem:** with thresholds alone, 56 of 172 real non-skin photos (dogs, food, rooms, objects) still got a diagnosis. Thresholds on a 7-class model can only say "unsure", never "this is not skin at all".
+
+**Data:** `notebooks/build_negatives.py` builds a non-lesion set from two public datasets:
+- **DTD** (5,640 texture photos): scaly, cracked, blotchy, stained surfaces. These are the hard negatives because they look like lesions.
+- **COCO val2017** (5,000 everyday photos): scenes, objects, animals, food. 115 photos that CLIP saw mainly as a face or close-up skin were dropped, since Melasma training images are face photos and lesion photos are skin close-ups.
+- **Splits:** 80/10/10, giving 8,420 / 1,052 / 1,053. The external test negatives (172 real Unsplash photos, 36 synthetic images) were **never used for training or for picking thresholds**.
+
+**The bar was set before training:** ship only if disease accuracy stays within seed noise (3-seed mean ≥ ~72.9 %) *and* clearly fewer non-skin photos get a diagnosis.
+
+**Attempt 1: train an 8th class jointly** (`train_dualkd.py --neg-train-csv`; teacher and CLIP distillation on lesion images only). 3 seeds, about 1.6 h GPU:
+
+| 3 seeds, clean split | Disease accuracy | Macro-F1 | Lesions rejected | Held-out non-lesions rejected |
+|---|---|---|---|---|
+| 7-class model (shipped) | 73.70 ± 0.81 | 70.44 ± 0.37 | – | – |
+| Jointly trained 8-class | 72.10 ± 1.62 | 68.92 ± 2.87 | 0.3–0.4 % | 98.4–99.2 % |
+
+Excellent rejection, but it **failed the accuracy bar**: −1.6 points, with Psoriasis recall dropping 69.7 → 62.8. Not shipped.
+
+**Attempt 2 (shipped): fit the extra output on the frozen model** (`notebooks/fit_not_lesion_head.py`).
+- **How:** the student's last layer maps a 512-d vector h to the 7 disease logits. One more row, z₈ = w·h + c, is fitted by logistic regression so that softmax over the 8 outputs gives P(not a lesion) = σ(z₈ − logsumexp(disease logits)).
+- **Why it costs nothing:** the 7 disease rows are copied unchanged, so disease predictions and accuracy are *identical* to the shipped model (74.71 % on the clean test for both PyTorch and ONNX). Fitting takes about 2 minutes.
+- **Thresholds:** both picked on validation lesions only (keep 99 % each): not-lesion probability < **0.866** and energy ≥ **2.25**.
+
+| Guards, same images | Real non-skin accepted | Synthetic accepted | Held-out DTD/COCO accepted | Curated lesions rejected | Test lesions rejected | Test acc of accepted |
+|---|---|---|---|---|---|---|
+| Before (energy ≥ 2.31) | 56/172 | 0/36 | 410/1053 | 2/56 | 216/2337 (9.2 %) | 76.24 |
+| **Now (not-lesion < 0.866 + energy ≥ 2.25)** | **10/172** | **0/36** | **53/1053** | **0/56** | **189/2337 (8.1 %)** | 75.74 |
+
+- **Strictly better on every safety number:** far fewer junk photos get a diagnosis, and fewer real lesions are turned away. The small drop in "accuracy of accepted" is because hard lesions that used to be thrown away are now kept.
+- **Animals** (held-out COCO photos, picked out with CLIP): dogs 17/18 rejected, cats 12/15, other animals 85/87. The misses are pale or furry animals on speckled surfaces. One white dog gets "Tinea, 48 %", which the app shows as a low-confidence result.
+- **Behaviour:** when the not-lesion probability passes the threshold, the server returns 400 `NOT_A_LESION` and the app asks for a retake (English and Urdu), exactly like the no-skin check. The phone does the same on the device: the exported `skin-v3` model has 8 outputs and `meta.json` carries both thresholds. A browser check gave identical results to the server.
+- **Compatibility:** server, export and app read the number of outputs from the model, so 7-output models still work unchanged.
+
+| Decision | Alternatives | Why |
+|---|---|---|
+| Fit the not-lesion output on the frozen student | Joint 8-class training; thresholds only | Same rejection, no disease-accuracy cost, minutes instead of hours |
+| Reject (retake) instead of showing "No disease" | Show an inconclusive result | A dog photo is not a screening; asking for a retake is clearer and matches the existing skin and blur checks |
+| Thresholds keep 99 % of val lesions | Stricter thresholds (e.g. keep 97.5 %) | Stricter ones rejected curated lesions for little extra gain |

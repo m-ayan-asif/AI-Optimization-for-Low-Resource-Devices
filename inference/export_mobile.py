@@ -6,7 +6,7 @@ features -> global average pool -> Linear -> Hardswish -> Linear, so the gradien
 position of the last feature map is the same vector  g = W1^T (hardswish'(z1) * W2[c]) / (H*W).  The exported graph
 returns the logits plus that CAM (for the top class), so the phone produces the same heatmap as server.py.
 
-Writes client/public/models/skin-v2/{student.onnx, meta.json}, then checks the ONNX model against PyTorch (logits and
+Writes client/public/models/<--out-dir>/{student.onnx, meta.json}, then checks the ONNX model against PyTorch (logits and
 Grad-CAM vs server.py's hook-based implementation) and its accuracy on the clean test split.
 
 Usage (needs torch, onnx, onnxruntime, opencv):  python export_mobile.py [--model ...] [--img-size 320]
@@ -23,7 +23,7 @@ from torchvision import models
 import quality as Q
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "..", "client", "public", "models", "skin-v2")  # versioned: served as immutable
+OUT_ROOT = os.path.join(HERE, "..", "client", "public", "models")  # one folder per model version: served as immutable
 CLASS_NAMES = ["Vitiligo", "Melasma", "Psoriasis", "Eczema", "Tinea", "Contact Dermatitis", "Seborrheic Dermatitis"]
 MEAN, STD = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
 
@@ -46,7 +46,7 @@ class StudentWithCam(nn.Module):
         lin1, lin2 = self.s.classifier[0], self.s.classifier[3]
         z1 = lin1(pooled)
         logits = lin2(nn.functional.hardswish(z1))
-        c = logits.argmax(dim=1)
+        c = logits[:, :len(CLASS_NAMES)].argmax(dim=1)  # heatmap for the top disease (8-class models: not "not a lesion")
         dhs = torch.where(z1 < -3, torch.zeros_like(z1), torch.where(z1 > 3, torch.ones_like(z1), z1 / 3 + 0.5))
         g = (dhs * lin2.weight[c]) @ lin1.weight                # (1, 960) = d logit_c / d pooled
         cam = torch.relu((g[:, :, None, None] * f).sum(1) / (f.shape[2] * f.shape[3]))
@@ -68,14 +68,18 @@ def hook_gradcam(model, x, class_idx):  # server.py's GradCAM, for the parity ch
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default=os.path.join(HERE, "models", "student_clean_res320_s2.pth"))
+    ap.add_argument("--model", default=os.path.join(HERE, "models", "student_clean_res320_s2_notlesion.pth"))
     ap.add_argument("--img-size", type=int, default=320)
-    ap.add_argument("--model-version", default="mobilenetv3-large-dualkd-clean320-v2-onnx")
+    ap.add_argument("--model-version", default="mobilenetv3-large-dualkd-clean320-notlesion-v3-onnx")
+    ap.add_argument("--out-dir", default="skin-v3", help="folder under client/public/models; use a new one per model")
     ap.add_argument("--test-csv", default=os.path.join(HERE, "..", ".bench", "labels", "test_clean.csv"))
     args = ap.parse_args()
 
-    student = build_student_large()
-    student.load_state_dict(torch.load(args.model, map_location="cpu", weights_only=True))
+    state = torch.load(args.model, map_location="cpu", weights_only=True)
+    num_outputs = state["classifier.3.weight"].shape[0]  # 8 = the diseases + "not a skin lesion"
+    student = build_student_large(num_outputs)
+    student.load_state_dict(state)
+    OUT = os.path.join(OUT_ROOT, args.out_dir)
     student.eval()
     wrapped = StudentWithCam(student).eval()
     os.makedirs(OUT, exist_ok=True)
@@ -90,7 +94,9 @@ def main():
             "guards": {"min_skin_ratio": Q.MIN_SKIN_RATIO, "blur_reject_threshold": Q.BLUR_REJECT_THRESHOLD,
                        "blur_max_side": Q.BLUR_MAX_SIDE, "low_confidence_threshold": Q.LOW_CONFIDENCE_THRESHOLD,
                        "ood_entropy_threshold": Q.OOD_ENTROPY_THRESHOLD, "ood_margin_threshold": Q.OOD_MARGIN_THRESHOLD,
-                       "ood_energy_threshold": Q.OOD_ENERGY_THRESHOLD},
+                       "ood_energy_threshold": Q.OOD_ENERGY_THRESHOLD,
+                       "not_lesion_threshold": Q.NOT_LESION_THRESHOLD},
+            "not_lesion_index": len(CLASS_NAMES) if num_outputs > len(CLASS_NAMES) else None,
         }, fh, indent=2)
     print(f"wrote {path} ({os.path.getsize(path) / 2**20:.1f} MB)")
 
@@ -104,7 +110,8 @@ def main():
         with torch.no_grad():
             ref = student(x)
         worst_logit = max(worst_logit, float(np.abs(lo - ref.numpy()).max()))
-        worst_cam = max(worst_cam, float(np.abs(cam[0] - hook_gradcam(student, x, int(ref.argmax()))).max()))
+        top_disease = int(ref[0, :len(CLASS_NAMES)].argmax())
+        worst_cam = max(worst_cam, float(np.abs(cam[0] - hook_gradcam(student, x, top_disease)).max()))
     print(f"parity vs PyTorch: max |logit diff| {worst_logit:.2e}, max |Grad-CAM diff| {worst_cam:.2e}")
     assert worst_logit < 1e-3 and worst_cam < 1e-3, "ONNX export does not match PyTorch"
 
@@ -119,7 +126,7 @@ def main():
         for p, y in zip(df.image_path, df.numeric_label):
             im = Image.open(os.path.join(HERE, "..", "notebooks", p)); im.draft("RGB", (1024, 1024))
             lo, _ = sess.run(None, {"input": tf(im.convert("RGB"))[None].numpy()})
-            correct += int(lo.argmax() == y)
+            correct += int(lo[0, :len(CLASS_NAMES)].argmax() == y)
         print(f"ONNX accuracy on {os.path.basename(args.test_csv)}: {100 * correct / len(df):.2f}% ({len(df)})")
 
 

@@ -255,6 +255,7 @@ export default function ScreeningPage() {
     if (!shownError) return null;
     if (shownCode === 'NO_SKIN_DETECTED') return t('errors.noSkinDetected');
     if (shownCode === 'IMAGE_TOO_BLURRY') return t('errors.imageTooBlurry');
+    if (shownCode === 'NOT_A_LESION') return t('errors.notALesion');
     if (shownCode === 'FILE_TOO_LARGE') return t('errors.fileTooLarge');
     if (shownCode === 'EMPTY_FILE') return t('errors.emptyFile');
     return shownError;

@@ -86,7 +86,7 @@ Phones need HTTPS: service workers (offline PWA) and the microphone only work in
 | `POSTGRES_PASSWORD` | required | Used by both `db` and `api`. Changing it after the first boot needs an `ALTER USER` in Postgres. |
 | `JWT_SECRET` | required | ≥32 random characters. Rotating it logs everyone out. |
 | `JWT_EXPIRES_IN` | `30m` | Session length. |
-| `MODEL_PATH` | `./models/student_clean_res320_s2.pth` | Student checkpoint inside the inference image. |
+| `MODEL_PATH` | `./models/student_clean_res320_s2_notlesion.pth` | Student checkpoint inside the inference image (8 outputs: 7 diseases + "not a skin lesion"). |
 | `IMG_SIZE` | `320` | Must match the checkpoint (320 for the clean-split production student, 224 for the old one). |
 | `ASR_MODEL_PATH` | `./models/asr/whisper-small-urdu-ours` | Only this Whisper is copied into the image (see `inference/.dockerignore`). |
 | `INFERENCE_THREADS` | `4` | PyTorch/OpenMP threads. Set to the number of physical cores you can spare. |

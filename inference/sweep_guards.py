@@ -83,12 +83,17 @@ def signals(model, df, workers, img_size):
             feats.append(f); logits.append(tail(f)); skin += s.tolist(); blur += b.tolist()
             if k % 20 == 0:
                 print(f"  {(k + 1) * 32}/{len(df)}", flush=True)
-    lg = torch.cat(logits)
+    full = torch.cat(logits)
+    d = len(CLASS_NAMES)
+    # 8-class models: column 7 is "not a skin lesion"; every other signal is computed on the 7 disease logits
+    not_lesion = torch.softmax(full, 1)[:, d] if full.shape[1] > d else torch.zeros(len(full))
+    lg = full[:, :d]
     p = torch.softmax(lg, 1)
     top2 = p.topk(2, 1).values
     df = df.assign(skin_ratio=skin, blur=blur, conf=top2[:, 0].numpy(), margin=(top2[:, 0] - top2[:, 1]).numpy(),
                    entropy=[Q.entropy_from_probs(r) for r in p.tolist()],
-                   energy=torch.logsumexp(lg, 1).numpy(), pred=[CLASS_NAMES[i] for i in p.argmax(1).tolist()])
+                   energy=torch.logsumexp(lg, 1).numpy(), pred=[CLASS_NAMES[i] for i in p.argmax(1).tolist()],
+                   not_lesion=not_lesion.numpy())
     return df, torch.cat(feats).numpy()
 
 
@@ -100,6 +105,8 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--img-size", type=int, default=224, help="the model's input resolution (server IMG_SIZE)")
     ap.add_argument("--split-suffix", default="", help="e.g. _clean to use ../.bench/labels/{train,val,test}_clean.csv")
+    ap.add_argument("--neg-test-csv", default=os.path.join(DATA, "negatives_test.csv"),
+                    help="held-out DTD/COCO negatives (same sources as the 8-class training negatives)")
     args = ap.parse_args()
     split = (lambda n: os.path.join(HERE, "..", ".bench", "labels", f"{n}{args.split_suffix}.csv")) if args.split_suffix         else (lambda n: f"{n}.csv")
 
@@ -109,10 +116,14 @@ def main():
              for p in collect(os.path.join(HERE, "test_images", "positive"))]
     rows += split_rows(split("test"), "positive_test", args.test_limit) + split_rows(split("val"), "val", args.test_limit)
     rows += split_rows(split("train"), "train", args.train_sample)
+    if os.path.exists(args.neg_test_csv):
+        rows += [(os.path.normpath(os.path.join(HERE, "..", "notebooks", p)), "negative_heldout", None)
+                 for p in pd.read_csv(args.neg_test_csv).image_path]
     df = pd.DataFrame(rows, columns=["path", "kind", "true_class"])
 
-    model = build_student_large()
-    model.load_state_dict(torch.load(args.model, map_location="cpu", weights_only=True))
+    state = torch.load(args.model, map_location="cpu", weights_only=True)
+    model = build_student_large(state["classifier.3.weight"].shape[0])
+    model.load_state_dict(state)
     model.eval()
     print(f"scoring {len(df)} images on CPU", flush=True)
     df, feats = signals(model, df, args.workers, args.img_size)
@@ -139,7 +150,7 @@ def main():
 
     def line(name, acc):
         out = {"setting": name}
-        for kind in ["negative_synthetic", "negative_real"]:
+        for kind in ["negative_synthetic", "negative_real", "negative_heldout"]:
             m = df.kind == kind; out[f"FA {kind[9:]}"] = f"{acc[m].sum()}/{m.sum()}"
         for kind in ["positive_curated", "positive_test"]:
             m = df.kind == kind; out[f"rejected {kind[9:]}"] = f"{(~acc[m]).sum()}/{m.sum()}"
@@ -161,6 +172,15 @@ def main():
         table.append(line(f"current + knn>={k_thr:.3f} (val keep {keep:.1%})", current_guard() & (df.knn_sim >= k_thr)))
         table.append(line(f"current + energy & knn (val keep {keep:.1%})",
                           current_guard() & (df.energy >= e_thr) & (df.knn_sim >= k_thr)))
+    if df.not_lesion.max() > 0:
+        for t in [0.3, 0.5, 0.7]:
+            table.append(line(f"current + not-lesion<{t}", current_guard() & (df.not_lesion < t)))
+        for keep in [0.975, 0.99]:
+            n_thr = np.quantile(df.not_lesion[val], keep)      # high not-lesion probability = reject
+            e_thr = np.quantile(df.energy[val], 1 - keep)
+            table.append(line(f"current + not-lesion<{n_thr:.3f} (val keep {keep:.1%})", current_guard() & (df.not_lesion < n_thr)))
+            table.append(line(f"current + not-lesion<{n_thr:.3f} & energy>={e_thr:.2f} (val keep {keep:.1%} each)",
+                              current_guard() & (df.not_lesion < n_thr) & (df.energy >= e_thr)))
     pd.set_option("display.width", 250, "display.max_colwidth", 60)
     print(pd.DataFrame(table).to_string(index=False))
 

@@ -34,15 +34,18 @@ from quality import (
     check_image_blur,
     entropy_from_probs,
     is_lfs_pointer,
+    is_not_a_lesion,
     is_skin_image,
     is_too_blurry,
 )
 
 # ── Config ────────────────────────────────────────────────────────────
 # Production student: CLIP dual-KD MobileNetV3-Large trained on the leak-free split at 320 px (seed picked on val):
-# 74.58% test / 70.85 macro-F1 on the clean test set. The older 224 px student is kept for comparison; set
-# MODEL_PATH=./models/student_large_clip_dualkd_distilled.pth IMG_SIZE=224 to serve it.
-MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2.pth")
+# 74.58% test / 70.85 macro-F1 on the clean test set, plus an 8th "not a skin lesion" output fitted on its frozen
+# features (notebooks/fit_not_lesion_head.py), which leaves the 7 disease outputs - and accuracy - unchanged.
+# student_clean_res320_s2.pth is the same model without that output; the older 224 px student can be served with
+# MODEL_PATH=./models/student_large_clip_dualkd_distilled.pth IMG_SIZE=224 OOD_ENERGY_THRESHOLD=2.37.
+MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2_notlesion.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
 # Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py, weights in git via LFS) - 23.6% WER vs the
 # turbo's 25.5% on the same FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo
@@ -148,11 +151,10 @@ def create_heatmap_overlay(original_image, cam, alpha=0.4):
 
 
 # ── Load Models ───────────────────────────────────────────────────────
-MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-v2")
+MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-notlesion-v3")
 print(f"Loading model from {MODEL_PATH} on {DEVICE}...")
-model = build_student_large(NUM_CLASSES)
 MODEL_LOADED = False
-
+state_dict = None
 if os.path.exists(MODEL_PATH):
     if is_lfs_pointer(MODEL_PATH):
         raise RuntimeError(
@@ -160,6 +162,12 @@ if os.path.exists(MODEL_PATH):
             "Run `git lfs install && git lfs pull` and restart the service."
         )
     state_dict = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=True)
+# 7 outputs = the diseases; 8 = the diseases plus a trained "not a skin lesion" class (output index 7)
+NUM_OUTPUTS = state_dict["classifier.3.weight"].shape[0] if state_dict is not None else NUM_CLASSES
+HAS_NOT_LESION_CLASS = NUM_OUTPUTS > NUM_CLASSES
+model = build_student_large(NUM_OUTPUTS)
+
+if state_dict is not None:
     model.load_state_dict(state_dict)
     MODEL_LOADED = True
     print("Model weights loaded successfully.")
@@ -294,8 +302,12 @@ async def predict(image: UploadFile = File(...)):
     # ── Phase 2: Model Forward Pass ──
     start_infer = time.perf_counter()
     with torch.no_grad():
-        logits = model(input_tensor)
+        full_logits = model(input_tensor)
+        logits = full_logits[:, :NUM_CLASSES]
         probabilities = torch.softmax(logits, dim=1)[0]
+    not_lesion_probability = (
+        float(torch.softmax(full_logits, dim=1)[0, NUM_CLASSES].item()) if HAS_NOT_LESION_CLASS else None
+    )
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     inference_ms = int((time.perf_counter() - start_infer) * 1000)
@@ -311,6 +323,17 @@ async def predict(image: UploadFile = File(...)):
     energy = float(torch.logsumexp(logits[0], dim=0).item())
 
     # ── Phase 3: Out-of-distribution / non-lesion check ──
+    # A photo the model recognises as not a skin lesion at all (an object, a scene, a texture) is rejected like a
+    # photo with no skin: the user is asked to retake it instead of getting a diagnosis.
+    if not_lesion_probability is not None and is_not_a_lesion(not_lesion_probability):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "This photo does not look like a skin condition. Please take a close, clear photo of the affected skin.",
+                "code": "NOT_A_LESION",
+                "not_lesion_probability": round(not_lesion_probability, 4),
+            },
+        )
     status = assess_prediction(confidence_score, confidence_margin, entropy, energy)
 
     # ── Phase 4: Grad-CAM explainability heatmap ──
@@ -344,6 +367,7 @@ async def predict(image: UploadFile = File(...)):
         "blur_score": round(blur_score, 1),
         "entropy": round(entropy, 3),
         "energy": round(energy, 3),
+        "not_lesion_probability": round(not_lesion_probability, 4) if not_lesion_probability is not None else None,
         "confidence_margin": round(confidence_margin, 3),
     }
 
@@ -468,20 +492,24 @@ async def transcribe(audio: UploadFile = File(...)):
 
 HEATMAP_FILENAME_REGEX = re.compile(r"^[0-9a-fA-F\-]{36}\.png$")
 
+
 @app.get("/heatmaps/{filename}")
 async def get_heatmap(filename: str):
-    # Enforce exact UUID4 filename pattern to eliminate directory traversal
-    if not HEATMAP_FILENAME_REGEX.match(filename):
+    # Only exact "<uuid>.png" names are allowed, which rules out "..", "/" and "\"
+    if not HEATMAP_FILENAME_REGEX.fullmatch(filename):
         return JSONResponse(status_code=404, content={"error": "Invalid heatmap identifier format"})
 
-    path = os.path.abspath(os.path.join(HEATMAP_DIR, filename))
-    heatmap_dir_abs = os.path.abspath(HEATMAP_DIR)
 
-    # Ensure canonical path stays strictly inside the designated heatmaps folder
-    if not path.startswith(heatmap_dir_abs) or not os.path.exists(path):
+    heatmap_dir_abs = os.path.abspath(HEATMAP_DIR)
+    path = os.path.abspath(os.path.join(heatmap_dir_abs, filename))
+
+    # Second layer: the resolved path must stay inside the heatmaps folder
+    # and must be a real file (not a directory)
+    if os.path.commonpath([heatmap_dir_abs, path]) != heatmap_dir_abs or not os.path.isfile(path):
         return JSONResponse(status_code=404, content={"error": "Heatmap not found"})
 
     return FileResponse(path, media_type="image/png")
+
 
 
 if __name__ == "__main__":
