@@ -13,7 +13,7 @@ assert rigorously:
 """
 
 import os
-
+import pytest
 
 # ─── GET /health ──────────────────────────────────────────────────────────────
 
@@ -171,6 +171,27 @@ class TestPredict:
         img.save(buf, format="PNG")
         res = client.post("/predict", files={"image": ("large.png", buf.getvalue(), "image/png")})
         assert res.status_code == 200
+
+# ─── GET /heatmaps/{filename} ─────────────────────────────────────────────────
+
+class TestHeatmapRoute:
+    def test_success_serves_generated_heatmap(self, client, png_bytes):
+        body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
+        res = client.get(f"/heatmaps/{body['heatmap_path']}")
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "image/png"
+
+    @pytest.mark.parametrize("name", [
+        "..\\..\\server.py",
+        "..%5C..%5Cserver.py",
+        "..%2Fserver.py",
+        "server.py",
+        "x.png",
+        "00000000-0000-0000-0000-000000000000.png",   # valid format, but no such file
+    ])
+    def test_error_rejects_traversal_and_unknown_names(self, client, name):
+        assert client.get(f"/heatmaps/{name}").status_code == 404
+
 
 
 

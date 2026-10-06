@@ -492,20 +492,24 @@ async def transcribe(audio: UploadFile = File(...)):
 
 HEATMAP_FILENAME_REGEX = re.compile(r"^[0-9a-fA-F\-]{36}\.png$")
 
+
 @app.get("/heatmaps/{filename}")
 async def get_heatmap(filename: str):
-    # Enforce exact UUID4 filename pattern to eliminate directory traversal
-    if not HEATMAP_FILENAME_REGEX.match(filename):
+    # Only exact "<uuid>.png" names are allowed, which rules out "..", "/" and "\"
+    if not HEATMAP_FILENAME_REGEX.fullmatch(filename):
         return JSONResponse(status_code=404, content={"error": "Invalid heatmap identifier format"})
 
-    path = os.path.abspath(os.path.join(HEATMAP_DIR, filename))
-    heatmap_dir_abs = os.path.abspath(HEATMAP_DIR)
 
-    # Ensure canonical path stays strictly inside the designated heatmaps folder
-    if not path.startswith(heatmap_dir_abs) or not os.path.exists(path):
+    heatmap_dir_abs = os.path.abspath(HEATMAP_DIR)
+    path = os.path.abspath(os.path.join(heatmap_dir_abs, filename))
+
+    # Second layer: the resolved path must stay inside the heatmaps folder
+    # and must be a real file (not a directory)
+    if os.path.commonpath([heatmap_dir_abs, path]) != heatmap_dir_abs or not os.path.isfile(path):
         return JSONResponse(status_code=404, content={"error": "Heatmap not found"})
 
     return FileResponse(path, media_type="image/png")
+
 
 
 if __name__ == "__main__":

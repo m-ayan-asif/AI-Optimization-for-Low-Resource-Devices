@@ -100,6 +100,10 @@ async function recordTelemetry(req, res) {
     }
 
     const v = parsed.values;
+
+    // COALESCE(EXCLUDED.x, device_telemetry.x): a value the client did not report
+    // (NULL) must never erase a value already stored, such as the server-side timings
+    // written by runInference. A value that IS reported still replaces the old one.
     const result = await db.query(
       `INSERT INTO device_telemetry (
         case_id, device_cores, device_memory_gb, client_ram_used_mb,
@@ -108,20 +112,20 @@ async function recordTelemetry(req, res) {
         total_server_time_ms, server_ram_used_mb, gpu_vram_used_mb, device_type
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       ON CONFLICT (case_id) DO UPDATE SET
-        device_cores = EXCLUDED.device_cores,
-        device_memory_gb = EXCLUDED.device_memory_gb,
-        client_ram_used_mb = EXCLUDED.client_ram_used_mb,
-        effective_connection = EXCLUDED.effective_connection,
-        client_rtt_ms = EXCLUDED.client_rtt_ms,
-        audio_processing_ms = EXCLUDED.audio_processing_ms,
-        browser_user_agent = EXCLUDED.browser_user_agent,
-        image_preprocess_ms = EXCLUDED.image_preprocess_ms,
-        model_inference_ms = EXCLUDED.model_inference_ms,
-        gradcam_generation_ms = EXCLUDED.gradcam_generation_ms,
-        total_server_time_ms = EXCLUDED.total_server_time_ms,
-        server_ram_used_mb = EXCLUDED.server_ram_used_mb,
-        gpu_vram_used_mb = EXCLUDED.gpu_vram_used_mb,
-        device_type = EXCLUDED.device_type
+        device_cores          = COALESCE(EXCLUDED.device_cores,          device_telemetry.device_cores),
+        device_memory_gb      = COALESCE(EXCLUDED.device_memory_gb,      device_telemetry.device_memory_gb),
+        client_ram_used_mb    = COALESCE(EXCLUDED.client_ram_used_mb,    device_telemetry.client_ram_used_mb),
+        effective_connection  = COALESCE(EXCLUDED.effective_connection,  device_telemetry.effective_connection),
+        client_rtt_ms         = COALESCE(EXCLUDED.client_rtt_ms,         device_telemetry.client_rtt_ms),
+        audio_processing_ms   = COALESCE(EXCLUDED.audio_processing_ms,   device_telemetry.audio_processing_ms),
+        browser_user_agent    = COALESCE(EXCLUDED.browser_user_agent,    device_telemetry.browser_user_agent),
+        image_preprocess_ms   = COALESCE(EXCLUDED.image_preprocess_ms,   device_telemetry.image_preprocess_ms),
+        model_inference_ms    = COALESCE(EXCLUDED.model_inference_ms,    device_telemetry.model_inference_ms),
+        gradcam_generation_ms = COALESCE(EXCLUDED.gradcam_generation_ms, device_telemetry.gradcam_generation_ms),
+        total_server_time_ms  = COALESCE(EXCLUDED.total_server_time_ms,  device_telemetry.total_server_time_ms),
+        server_ram_used_mb    = COALESCE(EXCLUDED.server_ram_used_mb,    device_telemetry.server_ram_used_mb),
+        gpu_vram_used_mb      = COALESCE(EXCLUDED.gpu_vram_used_mb,      device_telemetry.gpu_vram_used_mb),
+        device_type           = COALESCE(EXCLUDED.device_type,           device_telemetry.device_type)
       RETURNING telemetry_id, case_id, created_at`,
       [
         caseId,
