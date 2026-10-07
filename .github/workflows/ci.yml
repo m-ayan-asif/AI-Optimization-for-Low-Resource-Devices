@@ -2,16 +2,16 @@ name: SkinSense CI
 
 on:
   push:
-    branches: [main, 'feature/**']
+    branches: [ main, 'feature/**' ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   # -------------------------------------------------------------
-  # 1. Express Backend Tests (Jest - 107 tests)
+  # 1. Express Backend Tests + Contract Tests
   # -------------------------------------------------------------
   test-server:
-    name: Server Tests (Jest)
+    name: Server & Contract Tests (Jest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,14 +30,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Jest test suite
-        run: npm test
+      - name: Run Jest test suite with Coverage
+        run: npm test -- --coverage
 
   # -------------------------------------------------------------
-  # 2. React Frontend Tests (Vitest - 69 tests)
+  # 2. React Frontend Tests (Vitest)
   # -------------------------------------------------------------
   test-client:
-    name: Client Tests (Vitest)
+    name: Client Unit Tests (Vitest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -60,10 +60,10 @@ jobs:
         run: npm test -- --run
 
   # -------------------------------------------------------------
-  # 3. Python ML Inference Service Tests (pytest - 87 tests)
+  # 3. Python ML Inference Service (pytest + Golden Set)
   # -------------------------------------------------------------
   test-inference:
-    name: Inference Service Tests (pytest)
+    name: ML Service & Robustness Tests (pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -79,7 +79,7 @@ jobs:
           cache: 'pip'
           cache-dependency-path: inference/requirements.txt
 
-      - name: Install CPU-only PyTorch (Faster CI downloads)
+      - name: Install CPU-only PyTorch
         run: |
           python -m pip install --upgrade pip
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -89,20 +89,20 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov httpx
 
-      - name: Run pytest
+      - name: Run pytest (Unit + Golden Regressions)
         env:
-          MODEL_PATH: '/nonexistent/model.pth'
-          ASR_MODEL_PATH: '/nonexistent/asr'
-          HEATMAP_DIR: '/tmp/skinsense_heatmaps'
-          INFERENCE_PORT: '5002'
+          MODEL_PATH: "/nonexistent/model.pth"
+          ASR_MODEL_PATH: "/nonexistent/asr"
+          HEATMAP_DIR: "/tmp/skinsense_heatmaps"
+          INFERENCE_PORT: "5002"
         run: |
-          python -m pytest tests/ -v
+          python -m pytest tests/ -v --cov=.
 
   # -------------------------------------------------------------
-  # 4. Streamlit Monitoring Dashboard Tests (pytest - 25 tests)
+  # 4. Streamlit Monitoring Dashboard Tests
   # -------------------------------------------------------------
   test-dashboard:
-    name: Dashboard Tests (pytest)
+    name: Dashboard Regression Tests (pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -126,3 +126,4 @@ jobs:
 
       - name: Run dashboard pytest
         run: python -m pytest tests/ -v
+        
