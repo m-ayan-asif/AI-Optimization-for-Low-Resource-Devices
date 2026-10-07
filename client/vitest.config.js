@@ -7,6 +7,13 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/__tests__/setup.js'],
+    // Exclude Playwright E2E tests and default build output from Vitest
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'e2e/**',
+      '**/e2e/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
@@ -15,3 +22,4 @@ export default defineConfig({
     },
   },
 });
+
