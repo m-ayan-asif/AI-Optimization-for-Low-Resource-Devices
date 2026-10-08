@@ -4,8 +4,11 @@ Sources (downloaded into ../data/raw/negatives/, not in git):
   - DTD, Describable Textures Dataset (5,640 images, 47 texture classes): hard negatives - scaly, blotchy, cracked,
     stained surfaces look a lot like lesions.  https://www.robots.ox.ac.uk/~vgg/data/dtd/
   - COCO val2017 (5,000 everyday photos): scenes, objects, animals, food.  http://images.cocodataset.org/zips/val2017.zip
+  - Oxford-IIIT Pet (7,390 close-up cat and dog photos), saved as negatives/oxford_pets/: fur filling the frame passes
+    the skin-colour check and was the first real-world miss (a golden retriever puppy read as Eczema 70 %).
+    https://thor.robots.ox.ac.uk/datasets/pets/images.tar.gz
 
-COCO photos that CLIP sees mainly as a face or close-up skin are dropped: Melasma training images are face photos and
+COCO and Pet photos that CLIP sees mainly as a face or close-up skin are dropped: Melasma training images are face photos and
 lesion photos are skin close-ups, so labelling those "not a lesion" would contradict the disease classes.
 The held-out evaluation negatives (inference/test_images/negative/, real Unsplash photos + synthetic images) are never
 used here, so they stay an honest out-of-distribution test.
@@ -55,10 +58,20 @@ def main():
     score = skin_scores(coco, device)
     kept = [p for p, s in zip(coco, score) if s < SKIN_DROP]
     print(f"DTD {len(dtd)} | COCO {len(coco)}, dropped {len(coco) - len(kept)} face/skin-like, kept {len(kept)}")
+    pets = []
+    for p in sorted(glob.glob(f"{ROOT}/oxford_pets/*.jpg")):
+        try:  # the archive has a few unreadable files
+            Image.open(p).convert("RGB")
+            pets.append(p)
+        except Exception:
+            pass
+    pet_score = skin_scores(pets, device)
+    pets_kept = [p for p, s in zip(pets, pet_score) if s < SKIN_DROP]
+    print(f"Oxford-IIIT Pet {len(pets)}, dropped {len(pets) - len(pets_kept)} face/skin-like, kept {len(pets_kept)}")
 
     rng = np.random.default_rng(0)
     splits = {"train": [], "val": [], "test": []}
-    for source, paths in [("dtd", dtd), ("coco_val2017", kept)]:
+    for source, paths in [("dtd", dtd), ("coco_val2017", kept), ("oxford_pets", pets_kept)]:
         idx = rng.permutation(len(paths))
         a, b = int(0.8 * len(paths)), int(0.9 * len(paths))
         for name, part in [("train", idx[:a]), ("val", idx[a:b]), ("test", idx[b:])]:

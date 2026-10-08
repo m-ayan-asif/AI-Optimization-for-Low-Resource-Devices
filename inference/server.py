@@ -43,9 +43,10 @@ from quality import (
 # Production student: CLIP dual-KD MobileNetV3-Large trained on the leak-free split at 320 px (seed picked on val):
 # 74.58% test / 70.85 macro-F1 on the clean test set, plus an 8th "not a skin lesion" output fitted on its frozen
 # features (notebooks/fit_not_lesion_head.py), which leaves the 7 disease outputs - and accuracy - unchanged.
+# _v2 = that output refit with close-up pet photos added to the negatives (v1, without pets: ..._notlesion.pth).
 # student_clean_res320_s2.pth is the same model without that output; the older 224 px student can be served with
 # MODEL_PATH=./models/student_large_clip_dualkd_distilled.pth IMG_SIZE=224 OOD_ENERGY_THRESHOLD=2.37.
-MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2_notlesion.pth")
+MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2_notlesion_v2.pth")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
 # Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py, weights in git via LFS) - 23.6% WER vs the
 # turbo's 25.5% on the same FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo
@@ -151,7 +152,7 @@ def create_heatmap_overlay(original_image, cam, alpha=0.4):
 
 
 # ── Load Models ───────────────────────────────────────────────────────
-MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-notlesion-v3")
+MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-notlesion-v4")
 print(f"Loading model from {MODEL_PATH} on {DEVICE}...")
 MODEL_LOADED = False
 state_dict = None
