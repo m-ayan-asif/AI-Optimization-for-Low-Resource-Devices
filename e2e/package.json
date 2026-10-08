@@ -1,0 +1,14 @@
+{
+  "name": "skinsense-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --grep-invert @slow",
+    "test:all": "playwright test",
+    "test:whisper": "playwright test --grep @slow",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
+}

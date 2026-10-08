@@ -560,6 +560,18 @@ describe('POST /api/screening/:caseId/device-result', () => {
     expect(res.body.code).toBe('INVALID_PREDICTION');
   });
 
+  it('ERROR: rejects a model_version longer than the 50-character column instead of failing the insert', async () => {
+    // 51 characters: the name the not-a-lesion phone model first shipped with; every upload then failed with a 500
+    const tooLong = 'mobilenetv3-large-dualkd-clean320-notlesion-v4-onnx';
+    expect(tooLong).toHaveLength(51);
+    const res = await request(app)
+      .post(`/api/screening/${CASE_ID}/device-result`)
+      .set('Authorization', `Bearer ${PATIENT_TOKEN}`)
+      .field('prediction', JSON.stringify({ ...validPrediction, model_version: tooLong }));
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_PREDICTION');
+  });
+
   it('ERROR: rejects out-of-range scores and malformed JSON', async () => {
     const bad = await request(app)
       .post(`/api/screening/${CASE_ID}/device-result`)
