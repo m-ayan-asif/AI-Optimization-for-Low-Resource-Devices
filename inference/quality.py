@@ -46,7 +46,10 @@ def skin_ratio(pil_image: Image.Image) -> float:
         return 0.0
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    mask_hsv = cv2.inRange(hsv, np.array([0, 15, 0], np.uint8), np.array([25, 255, 255], np.uint8))
+    # Red wraps around OpenCV's 0-180 hue circle: pink and inflamed skin (and skin under flash) sits at 160-180, which
+    # the old 0-25 range rejected - e.g. an infant with facial eczema had 91 % of its cheek at hue 160-180 and was
+    # turned away as "no skin detected".
+    mask_hsv = cv2.inRange(hsv, np.array([0, 15, 0], np.uint8), np.array([25, 255, 255], np.uint8)) |         cv2.inRange(hsv, np.array([160, 15, 0], np.uint8), np.array([180, 255, 255], np.uint8))
 
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     mask_ycrcb = cv2.inRange(ycrcb, np.array([0, 133, 77], np.uint8), np.array([255, 173, 127], np.uint8))

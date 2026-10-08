@@ -173,7 +173,8 @@ export function skinRatio(rgb) {
   for (let i = 0; i < n; i++) {
     const r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2];
     const [h, s] = rgbToHsv8(r, g, b);
-    if (h > 25 || s < 15) continue;
+    // hue 0-25 or 160-180: red wraps around the hue circle (pink / inflamed skin), as in quality.skin_ratio
+    if ((h > 25 && h < 160) || s < 15) continue;
     const [, cr, cb] = rgbToYCrCb8(r, g, b);
     if (cr >= 133 && cr <= 173 && cb >= 77 && cb <= 127) skin++;
   }

@@ -86,11 +86,12 @@ def main():
     ext = [p for p in ext if p.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp"))]
     ext_real = [p for p in ext if f"{os.sep}real{os.sep}" in os.path.normpath(p)]
     ext_syn = [p for p in ext if p not in ext_real]
+    mism = sorted(glob.glob(os.path.expanduser("~/SkinSense/mismatches/*.*")))  # real-world misses reported in testing
 
     feats = {}
     for name, paths in [("pos_train", pos["train"]), ("neg_train", neg["train"]), ("pos_val", pos["val"]),
                         ("neg_val", neg["val"]), ("pos_test", pos["test"]), ("neg_test", neg["test"]),
-                        ("ext_real", ext_real), ("ext_syn", ext_syn)]:
+                        ("ext_real", ext_real), ("ext_syn", ext_syn), ("mismatches", mism)]:
         feats[name] = hidden(m, paths, args.img_size, device)
         print(f"{name}: {len(paths)}", flush=True)
     # flipped copies of the training images: cheap augmentation for a 513-parameter fit
@@ -121,9 +122,18 @@ def main():
     print(f"\nthreshold (keeps {args.keep:.1%} of val lesions, at least 0.5): {thr:.4f}")
     for k, label in [("pos_val", "val lesions rejected"), ("pos_test", "test lesions rejected"),
                      ("neg_val", "val non-lesions rejected"), ("neg_test", "held-out DTD/COCO non-lesions rejected"),
-                     ("ext_real", "real Unsplash non-skin photos rejected"), ("ext_syn", "synthetic negatives rejected")]:
+                     ("ext_real", "real Unsplash non-skin photos rejected"), ("ext_syn", "synthetic negatives rejected"),
+                     ("mismatches", "reported misses (~/SkinSense/mismatches)")]:
+        if not len(p[k]):
+            continue
         r = p[k] >= thr
         print(f"  {label:42s} {r.sum():5d}/{len(r):5d} = {100 * r.mean():.2f}%")
+    # Per disease: adding face photos to the negatives must not start rejecting Melasma (face photos too)
+    for split in ["val", "test"]:
+        labels = pd.read_csv(f"{args.labels}/{split}_clean.csv").unified_label.values
+        r = p[f"pos_{split}"] >= thr
+        per = {c: f"{int(r[labels == c].sum())}/{int((labels == c).sum())}" for c in sorted(set(labels))}
+        print(f"  {split} lesions rejected per class: {per}")
 
     new = student(CLASSES + 1)
     sd = {k: v for k, v in m.state_dict().items() if not k.startswith("classifier.3.")}

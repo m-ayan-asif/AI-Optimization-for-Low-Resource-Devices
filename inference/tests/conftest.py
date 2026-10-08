@@ -29,6 +29,7 @@ import pytest
 _tmp_heatmap_dir = tempfile.mkdtemp(prefix="skinsense_test_heatmaps_")
 os.environ.setdefault("MODEL_PATH", "/nonexistent/model.pth")
 os.environ.setdefault("ASR_MODEL_PATH", "/nonexistent/asr")
+os.environ.setdefault("LESION_GATE_PATH", "/nonexistent/lesion_gate.pth")  # tests patch the gate in explicitly
 os.environ["HEATMAP_DIR"] = _tmp_heatmap_dir
 os.environ.setdefault("INFERENCE_PORT", "5002")
 

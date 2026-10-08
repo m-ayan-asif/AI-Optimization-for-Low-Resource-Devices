@@ -557,3 +557,34 @@ Also measured: a phone photo stored sideways costs about 7 points (73.8 % uprigh
 - **The puppy:** not-lesion 0.43 → 0.91, now **rejected** ("please retake"), confirmed through the live app.
 - **Real lesions:** curated still 41/56 correct with none rejected; live and offline answers identical.
 - **Cost:** 3 more of the 172 Unsplash photos slip through (10 → 13). One linear output on frozen features is near its limit; the next step up would be a small dedicated head or, when online, branch C's CLIP gate.
+
+### 11c. Follow-up (8 Oct): a general-image gate and a skin-colour bug
+
+**What happened in testing:**
+- A **baby on an armchair** was still read as Eczema, even after the pet fix. The skin model sees everything as skin texture, so its own not-lesion output cannot separate such photos (0.43 on the baby).
+- A real **infant facial-eczema** photo was turned away as "no skin detected".
+
+**Fix 1: lesion gate** (`notebooks/fit_lesion_gate.py`, `inference/models/lesion_gate.pth`, 17 MB):
+- What it is: a logistic head on the **general ImageNet** features of a MobileNetV3-Large, which still knows dogs, babies and furniture. It runs before the skin model.
+- Negatives added for it: people (3,000 LFW faces, plus the COCO and pet photos of people).
+- Threshold: keeps 99 % of validation lesions.
+
+| Rejected as not a lesion | Skin-model features | **Gate** |
+|---|---|---|
+| Held-out textures / scenes / pets / people | 94.2 % | **99.0 %** |
+| Real Unsplash non-skin photos | 84.3 % | **100 %** |
+| Synthetic negatives | 75.0 % | **100 %** |
+| Test lesions wrongly rejected | 0.86 % | **0.4 %** (0 Melasma, 0/56 curated) |
+
+The baby and the puppy are now both rejected in the live app.
+
+**Fix 2: skin-colour pre-filter.** It only accepted hues 0–25, but red wraps around OpenCV's 0–180 hue circle, and pink or inflamed skin sits at 160–180 (91 % of that infant's cheek). With both ranges accepted:
+- Real test lesions wrongly turned away: **4.3 % → 2.1 %**.
+- The infant photo is now **Eczema 85 %** (correct).
+- The phone's copy of the filter (`preprocess.js`) got the same fix, and its fixtures were regenerated.
+
+**Costs:**
+- About **+52 MiB** RAM in the inference container (605 → 657 MiB), and one extra small CNN pass per photo.
+- **Not yet on the phone:** the on-device path still relies on the skin model's own not-lesion output.
+
+**Next (not started):** a PyTorch-free server. PyTorch alone is 302 MB on import, against 53 MB for ONNX Runtime; the plan is saved in the project notes.
