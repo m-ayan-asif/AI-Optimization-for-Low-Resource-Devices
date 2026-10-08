@@ -58,7 +58,7 @@ export default function ScreeningPage() {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageErrors, setImageErrors] = useState([]);
-  const [voiceLang, setVoiceLang] = useState('en');
+  const voiceLang = 'ur'; // the ASR model is Urdu-only
   const [textInput, setTextInput] = useState('');
   const [caseId, setCaseId] = useState(null);
   const [modePref, setModePref] = useState(getModePreference);
@@ -178,7 +178,7 @@ export default function ScreeningPage() {
       imageName: imageFile.name,
       audioBlob: useAudio ? audioBlob : null,
       transcript,
-      language: voiceLang === 'en' ? 'en' : 'ur',
+      language: voiceLang,
       text: skipVoice ? '' : textInput,
       prediction: deviceAnalysis.prediction,
       heatmapBlob: deviceAnalysis.heatmap,
@@ -402,33 +402,6 @@ export default function ScreeningPage() {
         <div className="panel panel-body">
           <h2 className="text-h2 text-ink-950 m-0 mb-1">{t('screening.voiceTitle')}</h2>
           <p className="text-body text-ink-600 mb-6 mt-1">{t('screening.voiceDesc')}</p>
-
-          <div className="mb-7">
-            <label className="label mb-2">{t('screening.voiceLang')}</label>
-            <div className="flex gap-2.5 flex-wrap">
-              {[
-                { code: 'en', label: 'English' },
-                { code: 'ur', label: 'اردو' },
-                { code: 'ro', label: t('screening.langRomanUrdu') },
-              ].map((lang) => {
-                const active = voiceLang === lang.code;
-                return (
-                  <button
-                    key={lang.code}
-                    onClick={() => setVoiceLang(lang.code)}
-                    aria-pressed={active}
-                    className={`px-4 py-2 rounded-control text-body font-semibold border-2 cursor-pointer transition-colors ${
-                      active
-                        ? 'border-brand-600 bg-brand-50 text-brand-800'
-                        : 'border-line-strong bg-surface text-ink-600 hover:border-ink-300'
-                    }`}
-                  >
-                    {lang.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
           <div className="flex flex-col items-center gap-5 py-8 border-y border-line">
             <button
