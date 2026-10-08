@@ -23,15 +23,16 @@ LOW_CONFIDENCE_THRESHOLD = 0.30
 OOD_ENTROPY_THRESHOLD = 1.65      # ln(7) = 1.946 is the maximum for 7 classes
 OOD_MARGIN_THRESHOLD = 0.08
 # logsumexp(disease logits) below this => input unlike the training data. With the "not a skin lesion" output
-# (below) both thresholds keep 99% of val lesions for student_clean_res320_s2_notlesion.pth. 2026-10-06 sweep, both
-# together: 0/36 synthetic, 10/172 real non-skin and 53/1053 held-out DTD/COCO photos accepted; 0/56 curated lesions
-# and 8.1% of clean-test lesions rejected (energy alone at 2.31: 56/172, 410/1053, 2/56, 9.2%). Model-specific: re-run
+# (below) both thresholds keep 99% of val lesions for student_clean_res320_s2_notlesion_v2.pth (not-lesion output
+# refit with close-up pet photos after a golden-retriever puppy was read as Eczema 70%). 2026-10-08 sweep, both
+# together: 0/36 synthetic, 13/172 real non-skin and 77/1788 held-out DTD/COCO/pet photos accepted (v1: 0, 10, 229);
+# 0/56 curated lesions and 188/2337 clean-test lesions rejected (v1: 0, 189). Model-specific: re-run
 # `sweep_guards.py --model <pth> --img-size <px> --split-suffix _clean` when the model changes.
 OOD_ENERGY_THRESHOLD = float(os.environ.get("OOD_ENERGY_THRESHOLD", 2.25))
 
 # Models with the trained "not a skin lesion" class (8 outputs): reject the photo when that class's softmax
 # probability is at least this. Model-specific like the energy threshold; set from sweep_guards.py.
-NOT_LESION_THRESHOLD = float(os.environ.get("NOT_LESION_THRESHOLD", 0.866))
+NOT_LESION_THRESHOLD = float(os.environ.get("NOT_LESION_THRESHOLD", 0.842))
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec"

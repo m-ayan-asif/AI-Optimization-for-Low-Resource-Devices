@@ -26,7 +26,7 @@ services:
     build: ../inference
     restart: unless-stopped
     environment:
-      MODEL_PATH: ${MODEL_PATH:-./models/student_clean_res320_s2_notlesion.pth}
+      MODEL_PATH: ${MODEL_PATH:-./models/student_clean_res320_s2_notlesion_v2.pth}
       IMG_SIZE: ${IMG_SIZE:-320}
       ASR_MODEL_PATH: ${ASR_MODEL_PATH:-./models/asr/whisper-small-urdu-ours}
       OMP_NUM_THREADS: ${INFERENCE_THREADS:-4}

@@ -530,3 +530,30 @@ Excellent rejection, but it **failed the accuracy bar**: −1.6 points, with Pso
 | Fit the not-lesion output on the frozen student | Joint 8-class training; thresholds only | Same rejection, no disease-accuracy cost, minutes instead of hours |
 | Reject (retake) instead of showing "No disease" | Show an inconclusive result | A dog photo is not a screening; asking for a retake is clearer and matches the existing skin and blur checks |
 | Thresholds keep 99 % of val lesions | Stricter thresholds (e.g. keep 97.5 %) | Stricter ones rejected curated lesions for little extra gain |
+
+
+### 11b. Follow-up (8 Oct): close-up pets were getting through
+
+**Report from testing the live app:** "most default to eczema when they're dogs". A close-up golden retriever puppy came back as **Eczema, 70 %**.
+
+**Diagnosis**, by reproducing that exact photo through every check:
+- The skin-colour filter passed it: cream fur makes 77 % of the pixels "skin-coloured".
+- The not-lesion output gave only **0.43**; it rejects at 0.866.
+- Energy and confidence both passed.
+
+The not-lesion training data (DTD textures, COCO wide scenes) had almost no **close-up pet portraits**. The earlier "17/18 dogs rejected" check used COCO, which is mostly wide shots, so it missed this case. With nothing better to go on, the disease part fell back to its most common class, Eczema.
+
+Also measured: a phone photo stored sideways costs about 7 points (73.8 % upright → 67.2 % / 65.7 % at 90° / 270°). The server does not yet apply the photo's EXIF orientation. Fixing that is still open.
+
+**Fix:** added the **Oxford-IIIT Pet** dataset (7,390 cat and dog photos; 40 face/skin-like ones dropped by the same CLIP filter) to the non-lesion set, then refit only the not-lesion output on the frozen student (`fit_not_lesion_head.py`). The 7 disease outputs are unchanged, so accuracy stays at 74.71 % for the shipped seed. Threshold, chosen on validation lesions only (keep 99 %): **0.842**. Model file: `student_clean_res320_s2_notlesion_v2.pth`; phone model `skin-v4`.
+
+| Full guards, same images | Synthetic accepted | Real non-skin accepted | Held-out DTD/COCO/**pets** accepted | Curated lesions rejected | Test lesions rejected |
+|---|---|---|---|---|---|
+| v1 (DTD + COCO) | 0/36 | 10/172 | 229/1788 | 0/56 | 189/2337 |
+| **v2 (+ pets)** | 0/36 | 13/172 | **77/1788** | 0/56 | 188/2337 |
+
+- **Non-lesion photos given a diagnosis:** 12.0 % → **4.5 %** across all 1,996 test negatives.
+- **Held-out pet photos rejected:** 72.5 % → **96.1 %**.
+- **The puppy:** not-lesion 0.43 → 0.91, now **rejected** ("please retake"), confirmed through the live app.
+- **Real lesions:** curated still 41/56 correct with none rejected; live and offline answers identical.
+- **Cost:** 3 more of the 172 Unsplash photos slip through (10 → 13). One linear output on frozen features is near its limit; the next step up would be a small dedicated head or, when online, branch C's CLIP gate.
