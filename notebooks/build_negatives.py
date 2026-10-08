@@ -7,9 +7,14 @@ Sources (downloaded into ../data/raw/negatives/, not in git):
   - Oxford-IIIT Pet (7,390 close-up cat and dog photos), saved as negatives/oxford_pets/: fur filling the frame passes
     the skin-colour check and was the first real-world miss (a golden retriever puppy read as Eczema 70 %).
     https://thor.robots.ox.ac.uk/datasets/pets/images.tar.gz
+  - People with normal skin (source "people"): LFW face photos (one per person, 3,000 sampled; downloaded by
+    sklearn.datasets.fetch_lfw_people into negatives/lfw_home/) plus the COCO and Pet photos the CLIP filter below
+    marks as faces or close-up skin. Added after a photo of a baby on an armchair was read as Eczema 68 %: without
+    people in this set the model never learned that a photo of a person is not a lesion photo. Melasma photos are
+    face photos too, so this source is only kept if Melasma recall does not drop (checked in fit_not_lesion_head.py).
 
-COCO and Pet photos that CLIP sees mainly as a face or close-up skin are dropped: Melasma training images are face photos and
-lesion photos are skin close-ups, so labelling those "not a lesion" would contradict the disease classes.
+COCO and Pet photos that CLIP sees mainly as a face or close-up skin are kept apart in the "people" source, so the
+other sources' splits are unchanged and the effect of adding people can be measured on its own.
 The held-out evaluation negatives (inference/test_images/negative/, real Unsplash photos + synthetic images) are never
 used here, so they stay an honest out-of-distribution test.
 
@@ -69,9 +74,16 @@ def main():
     pets_kept = [p for p, s in zip(pets, pet_score) if s < SKIN_DROP]
     print(f"Oxford-IIIT Pet {len(pets)}, dropped {len(pets) - len(pets_kept)} face/skin-like, kept {len(pets_kept)}")
 
+    people_dropped = [p for p, s in zip(coco, score) if s >= SKIN_DROP] + [p for p, s in zip(pets, pet_score) if s >= SKIN_DROP]
+    lfw_people = sorted(glob.glob(f"{ROOT}/lfw_home/lfw_home/lfw_funneled/*/"))
+    lfw = [sorted(glob.glob(os.path.join(d, "*.jpg")))[0] for d in lfw_people if glob.glob(os.path.join(d, "*.jpg"))]
+    lfw = [lfw[i] for i in sorted(np.random.default_rng(1).choice(len(lfw), size=min(3000, len(lfw)), replace=False))]
+    people = people_dropped + lfw
+    print(f"people: {len(people_dropped)} COCO/Pet face or skin photos + {len(lfw)} LFW faces")
+
     rng = np.random.default_rng(0)
     splits = {"train": [], "val": [], "test": []}
-    for source, paths in [("dtd", dtd), ("coco_val2017", kept), ("oxford_pets", pets_kept)]:
+    for source, paths in [("dtd", dtd), ("coco_val2017", kept), ("oxford_pets", pets_kept), ("people", people)]:
         idx = rng.permutation(len(paths))
         a, b = int(0.8 * len(paths)), int(0.9 * len(paths))
         for name, part in [("train", idx[:a]), ("val", idx[a:b]), ("test", idx[b:])]:

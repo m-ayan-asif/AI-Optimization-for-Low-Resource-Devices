@@ -234,3 +234,38 @@ class TestNotALesionClass:
         assert len(body["all_scores"]) == 7
         assert abs(sum(body["all_scores"].values()) - 1.0) < 0.01
         assert body["telemetry"]["not_lesion_probability"] < 0.01
+
+
+
+# ─── Lesion-photo gate (general ImageNet features) ───────────────────────────
+
+class TestLesionGate:
+    """The gate runs before the skin model: a photo it judges "not a lesion photo" gets NOT_A_LESION."""
+
+    def _gate(self, monkeypatch, prob, threshold=0.5):
+        import torch
+        import server
+
+        class FixedGate(torch.nn.Module):
+            def forward(self, x):
+                return torch.full((x.shape[0],), prob)
+
+        monkeypatch.setattr(server, "lesion_gate", FixedGate())
+        monkeypatch.setattr(server, "LESION_GATE_THRESHOLD", threshold)
+
+    def test_error_gate_rejects_non_lesion_photo(self, client, png_bytes, monkeypatch):
+        self._gate(monkeypatch, 0.97)
+        res = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")})
+        assert res.status_code == 400
+        assert res.json()["code"] == "NOT_A_LESION"
+        assert res.json()["not_lesion_probability"] == 0.97
+
+    def test_success_gate_passes_lesion_photo_and_reports_probability(self, client, png_bytes, monkeypatch):
+        self._gate(monkeypatch, 0.02)
+        res = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")})
+        assert res.status_code == 200
+        assert res.json()["telemetry"]["lesion_gate_probability"] == 0.02
+
+    def test_success_health_reports_gate(self, client, monkeypatch):
+        self._gate(monkeypatch, 0.0)
+        assert client.get("/health").json()["lesion_gate"] is True

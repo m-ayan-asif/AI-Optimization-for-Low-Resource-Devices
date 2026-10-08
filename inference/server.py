@@ -185,6 +185,44 @@ model.eval()
 grad_cam = GradCAM(model)
 os.makedirs(HEATMAP_DIR, exist_ok=True)
 
+# ── Lesion-photo gate ─────────────────────────────────────────────────
+# "Is this a photo of a skin condition at all?", judged on GENERAL ImageNet features (notebooks/fit_lesion_gate.py).
+# The skin model sees everything as skin texture, so close-up pets or a baby on an armchair slipped past its own
+# not-a-lesion output and came back as Eczema; an ImageNet model still knows dogs, babies and furniture.
+LESION_GATE_PATH = os.environ.get("LESION_GATE_PATH", "./models/lesion_gate.pth")
+GATE_SIZE = 224
+gate_transform = transforms.Compose([
+    transforms.Resize((GATE_SIZE, GATE_SIZE)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+
+class LesionGate(nn.Module):
+    """ImageNet MobileNetV3-Large up to its 1280-d layer, plus one logistic output: P(not a lesion photo)."""
+
+    def __init__(self):
+        super().__init__()
+        base = models.mobilenet_v3_large(weights=None)
+        self.features, self.avgpool = base.features, base.avgpool
+        self.classifier = nn.Sequential(base.classifier[0], base.classifier[1])  # Linear(960, 1280) + Hardswish
+        self.head = nn.Linear(1280, 1)
+
+    def forward(self, x):
+        return torch.sigmoid(self.head(self.classifier(torch.flatten(self.avgpool(self.features(x)), 1))))[:, 0]
+
+
+lesion_gate, LESION_GATE_THRESHOLD = None, None
+if os.path.exists(LESION_GATE_PATH) and not is_lfs_pointer(LESION_GATE_PATH):
+    gate_state = torch.load(LESION_GATE_PATH, map_location=DEVICE, weights_only=True)
+    LESION_GATE_THRESHOLD = float(os.environ.get("LESION_GATE_THRESHOLD", gate_state.pop("threshold").item()))
+    lesion_gate = LesionGate()
+    lesion_gate.load_state_dict(gate_state)
+    lesion_gate = lesion_gate.to(DEVICE).eval()
+    print(f"Lesion gate loaded (threshold {LESION_GATE_THRESHOLD:.3f}).")
+else:
+    print(f"Lesion gate not found at {LESION_GATE_PATH}; relying on the model's own not-a-lesion output.")
+
 
 def warm_up():
     """
@@ -195,6 +233,8 @@ def warm_up():
     dummy = torch.zeros(1, 3, IMG_SIZE, IMG_SIZE, device=DEVICE)
     with torch.no_grad():
         model(dummy)
+        if lesion_gate is not None:
+            lesion_gate(torch.zeros(1, 3, GATE_SIZE, GATE_SIZE, device=DEVICE))
     grad_cam.generate(torch.zeros(1, 3, IMG_SIZE, IMG_SIZE, device=DEVICE), class_idx=0)
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -241,6 +281,7 @@ def health():
         "classes": CLASS_NAMES,
         "model_version": MODEL_VERSION,
         "model_loaded": MODEL_LOADED,
+        "lesion_gate": lesion_gate is not None,
         "warmed_up": WARMED_UP,
     }
 
@@ -299,6 +340,21 @@ async def predict(image: UploadFile = File(...)):
 
     input_tensor = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
     preprocess_ms = int((time.perf_counter() - start_prep) * 1000)
+
+    # Check 3: is this a photo of a skin condition at all? (general-image gate)
+    lesion_gate_probability = None
+    if lesion_gate is not None:
+        with torch.no_grad():
+            lesion_gate_probability = float(lesion_gate(gate_transform(pil_image).unsqueeze(0).to(DEVICE))[0].item())
+        if lesion_gate_probability >= LESION_GATE_THRESHOLD:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "This photo does not look like a skin condition. Please take a close, clear photo of the affected skin.",
+                    "code": "NOT_A_LESION",
+                    "not_lesion_probability": round(lesion_gate_probability, 4),
+                },
+            )
 
     # ── Phase 2: Model Forward Pass ──
     start_infer = time.perf_counter()
@@ -369,6 +425,7 @@ async def predict(image: UploadFile = File(...)):
         "entropy": round(entropy, 3),
         "energy": round(energy, 3),
         "not_lesion_probability": round(not_lesion_probability, 4) if not_lesion_probability is not None else None,
+        "lesion_gate_probability": round(lesion_gate_probability, 4) if lesion_gate_probability is not None else None,
         "confidence_margin": round(confidence_margin, 3),
     }
 
