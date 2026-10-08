@@ -123,6 +123,8 @@ cd client && npm test
 cd inference && python -m pytest tests/ -v
 cd dashboard && python -m pytest tests/ -v
 ```
+
+End-to-end tests of the PWA (on-device screening, offline sync, not-a-lesion rejection, in-browser Whisper) run against a running stack: see [e2e/README.md](e2e/README.md).
 See [documentation/TESTING.md](documentation/TESTING.md).
 
 ## Documentation
