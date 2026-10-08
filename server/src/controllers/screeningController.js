@@ -370,6 +370,8 @@ async function storePrediction(caseId, prediction, modelVersion) {
 }
 
 const MAX_SCORE_ENTRIES = 32;
+// predictions.model_version is VARCHAR(50) (migration 001): longer names used to fail the insert with a 500.
+const MAX_MODEL_VERSION_LENGTH = 50;
 
 function removeUploaded(file) {
   if (file?.path) fs.promises.unlink(file.path).catch(() => {});
@@ -393,7 +395,8 @@ async function submitDeviceResult(req, res) {
       Object.keys(scores).length <= MAX_SCORE_ENTRIES &&
       Object.values(scores).every((v) => typeof v === 'number' && v >= 0 && v <= 1);
     if (!validatePredictionShape(prediction) || !scoresValid ||
-        typeof prediction.model_version !== 'string' || !prediction.model_version.includes('onnx')) {
+        typeof prediction.model_version !== 'string' || !prediction.model_version.includes('onnx') ||
+        prediction.model_version.length > MAX_MODEL_VERSION_LENGTH) {
       removeUploaded(req.file);
       return res.status(400).json({ error: 'Invalid on-device prediction', code: 'INVALID_PREDICTION' });
     }
@@ -414,7 +417,7 @@ async function submitDeviceResult(req, res) {
       inference_time_ms: Math.max(0, Math.round(Number(prediction.inference_time_ms) || 0)),
       telemetry: prediction.telemetry && typeof prediction.telemetry === 'object' ? prediction.telemetry : {},
     };
-    const modelVersion = prediction.model_version.slice(0, 100);
+    const modelVersion = prediction.model_version;
     const predictionId = await storePrediction(existingCase.case_id, stored, modelVersion);
 
     res.json({ prediction_id: predictionId, model_version: modelVersion, ...stored, is_mock: false });

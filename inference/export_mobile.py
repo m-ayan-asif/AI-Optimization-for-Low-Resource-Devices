@@ -70,8 +70,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.path.join(HERE, "models", "student_clean_res320_s2_notlesion_v2.pth"))
     ap.add_argument("--img-size", type=int, default=320)
-    ap.add_argument("--model-version", default="mobilenetv3-large-dualkd-clean320-notlesion-v4-onnx")
-    ap.add_argument("--out-dir", default="skin-v4", help="folder under client/public/models; use a new one per model")
+    ap.add_argument("--model-version", default="mnv3l-dualkd-clean320-notlesion-v4-onnx",
+                    help="stored in predictions.model_version, VARCHAR(50); must contain 'onnx'")
+    ap.add_argument("--out-dir", default="skin-v5", help="folder under client/public/models; use a new one per model")
     ap.add_argument("--test-csv", default=os.path.join(HERE, "..", ".bench", "labels", "test_clean.csv"))
     args = ap.parse_args()
 

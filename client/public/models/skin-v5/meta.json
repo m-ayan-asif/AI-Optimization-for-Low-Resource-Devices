@@ -1,5 +1,5 @@
 {
-  "model_version": "mobilenetv3-large-dualkd-clean320-notlesion-v4-onnx",
+  "model_version": "mnv3l-dualkd-clean320-notlesion-v4-onnx",
   "img_size": 320,
   "mean": [
     0.485,
