@@ -17,8 +17,18 @@ function copyOrtWasm() {
   };
   return {
     name: 'copy-ort-wasm',
-    configureServer() {
+    // Copy before the dev server scans public/ (configureServer runs too late: on a fresh clone the files are not
+    // served until the next restart and /ort/* falls through to index.html).
+    config() {
       copyTo(path.resolve('public/ort'));
+    },
+    configureServer(server) {
+      // onnxruntime-web import()s its module from /ort/. In dev Vite appends ?import to such imports and then answers
+      // 500 ("file is in /public ... should not be imported from source code"). Strip it so the file is served as is.
+      server.middlewares.use((req, _res, next) => {
+        if (req.url?.startsWith('/ort/')) req.url = req.url.replace(/\?import$/, '');
+        next();
+      });
     },
     writeBundle(options) {
       copyTo(path.join(options.dir || 'dist', 'ort'));

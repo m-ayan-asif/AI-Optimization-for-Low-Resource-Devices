@@ -1,5 +1,5 @@
-const MIN_WIDTH = 300;
-const MIN_HEIGHT = 300;
+const MIN_WIDTH = 200;
+const MIN_HEIGHT = 200;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
 

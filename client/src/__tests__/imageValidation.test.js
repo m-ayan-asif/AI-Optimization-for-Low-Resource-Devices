@@ -133,21 +133,21 @@ describe('validateImageDimensions()', () => {
     expect(result.height).toBe(400);
   });
 
-  it('SUCCESS: resolves valid for an image at exactly 300×300 (the minimum)', async () => {
-    vi.spyOn(global, 'Image').mockImplementation(() => mockImage(300, 300));
+  it('SUCCESS: resolves valid for an image at exactly 200×200 (the minimum)', async () => {
+    vi.spyOn(global, 'Image').mockImplementation(() => mockImage(200, 200));
     const file = new File(['data'], 'ok.jpg', { type: 'image/jpeg' });
     const result = await validateImageDimensions(file);
     expect(result.valid).toBe(true);
   });
 
-  it('ERROR: rejects an image smaller than 300×300', async () => {
-    vi.spyOn(global, 'Image').mockImplementation(() => mockImage(200, 150));
+  it('ERROR: rejects an image smaller than 200×200', async () => {
+    vi.spyOn(global, 'Image').mockImplementation(() => mockImage(150, 100));
     const file = new File(['data'], 'small.jpg', { type: 'image/jpeg' });
     const result = await validateImageDimensions(file);
     expect(result.valid).toBe(false);
-    expect(result.errors[0]).toMatch(/300/);
     expect(result.errors[0]).toMatch(/200/);
     expect(result.errors[0]).toMatch(/150/);
+    expect(result.errors[0]).toMatch(/100/);
   });
 
   it('ERROR: rejects an image that is wide but not tall enough', async () => {
@@ -165,8 +165,8 @@ describe('validateImageDimensions()', () => {
     expect(result.errors[0]).toMatch(/could not read/i);
   });
 
-  it('EDGE: exactly 299×300 fails on width only', async () => {
-    vi.spyOn(global, 'Image').mockImplementation(() => mockImage(299, 300));
+  it('EDGE: exactly 199×200 fails on width only', async () => {
+    vi.spyOn(global, 'Image').mockImplementation(() => mockImage(199, 200));
     const file = new File(['data'], 'narrow.jpg', { type: 'image/jpeg' });
     const result = await validateImageDimensions(file);
     expect(result.valid).toBe(false);

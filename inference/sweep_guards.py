@@ -99,11 +99,11 @@ def signals(model, df, workers, img_size):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default=os.path.join(HERE, "models", "student_large_clip_dualkd_distilled.pth"))
+    ap.add_argument("--model", default=os.path.join(HERE, "models", "student_clean_res320_s2_notlesion_v2.pth"))
     ap.add_argument("--train-sample", type=int, default=2000, help="train.csv rows used to fit the Mahalanobis model")
     ap.add_argument("--test-limit", type=int, default=0, help="use only N rows of test.csv / val.csv (0 = all)")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--img-size", type=int, default=224, help="the model's input resolution (server IMG_SIZE)")
+    ap.add_argument("--img-size", type=int, default=320, help="the model's input resolution (server IMG_SIZE)")
     ap.add_argument("--split-suffix", default="", help="e.g. _clean to use ../.bench/labels/{train,val,test}_clean.csv")
     ap.add_argument("--neg-test-csv", default=os.path.join(DATA, "negatives_test.csv"),
                     help="held-out DTD/COCO negatives (same sources as the 8-class training negatives)")

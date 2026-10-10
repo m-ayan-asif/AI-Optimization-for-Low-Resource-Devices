@@ -37,7 +37,7 @@ import pytest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from server import load_audio_wav, create_heatmap_overlay, GradCAM, model, CLASS_NAMES, DEVICE
+from server import load_audio_wav, create_heatmap_overlay, GradCAM, model, CLASS_NAMES, DEVICE, IMG_SIZE
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ class TestGradCAM:
         from torchvision import transforms
         from PIL import Image
 
-        img = Image.new("RGB", (224, 224), color=(128, 64, 32))
+        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE), color=(128, 64, 32))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
@@ -142,7 +142,7 @@ class TestGradCAM:
         from torchvision import transforms
         from PIL import Image
 
-        img = Image.new("RGB", (224, 224), color=(200, 100, 50))
+        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE), color=(200, 100, 50))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
@@ -155,7 +155,7 @@ class TestGradCAM:
         from torchvision import transforms
         from PIL import Image
 
-        img = Image.new("RGB", (224, 224))
+        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
@@ -167,7 +167,7 @@ class TestGradCAM:
         from torchvision import transforms
         from PIL import Image
 
-        img = Image.new("RGB", (224, 224))
+        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE))
         tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
