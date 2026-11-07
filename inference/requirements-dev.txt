@@ -1,0 +1,15 @@
+# Everything that is not serving: exporting models (export_mobile.py, export_server.py), tuning the guards
+# (sweep_guards.py), training Whisper (train_whisper_urdu.py) and running the tests.
+-r requirements.txt
+torch
+torchvision
+onnx
+transformers>=4.40.0
+accelerate
+huggingface_hub
+soundfile
+librosa
+pandas
+pytest
+pytest-cov
+httpx

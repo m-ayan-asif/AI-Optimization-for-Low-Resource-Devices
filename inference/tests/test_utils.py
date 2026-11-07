@@ -3,16 +3,17 @@ Unit tests for utility functions in server.py.
 
 Functions under test:
   load_audio_wav(path)
-    Reads a WAV file with soundfile and returns a float32 numpy array at 16 kHz.
-    Tests verify dtype, length (sample count), shape (1-D), and that silence
-    decodes to all-zeros.
+    Decodes any audio container with PyAV and returns a float32 numpy array at 16 kHz.
+    Tests verify dtype, length (sample count), shape (1-D), resampling, down-mixing,
+    browser WebM/Opus, and that silence decodes to all-zeros.
 
-  GradCAM.generate(tensor, class_idx=None)
-    Hooks into the last convolutional layer (model.features[-1]) to produce a
-    class activation map.  The model runs with RANDOM weights in tests (no .pth
-    file exists at MODEL_PATH), so prediction values are meaningless.  We assert
-    only on structural properties that hold regardless of weights: the CAM is
-    2-D, values are in [0, 1] (normalised), and a forced class_idx is honoured.
+  preprocess(pil_image, size), softmax(logits)
+    What torchvision and torch used to do for the model's input and output.
+
+  student (the ONNX session)
+    Returns the logits and the Grad-CAM.  The real graph computes the CAM in closed
+    form (export_mobile.py, checked against hook-based Grad-CAM when exported); here
+    we assert the shape the service relies on: the CAM is 2-D with values in [0, 1].
 
   create_heatmap_overlay(pil_image, cam)
     Blends the Grad-CAM heatmap over the original image using OpenCV colormaps.
@@ -37,28 +38,29 @@ import pytest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from server import load_audio_wav, create_heatmap_overlay, GradCAM, model, CLASS_NAMES, DEVICE, IMG_SIZE
+import server
+from server import load_audio_wav, create_heatmap_overlay, preprocess, softmax, IMG_SIZE
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _make_wav(num_samples: int, sample_rate: int = 16000) -> str:
+def _make_wav(num_samples: int, sample_rate: int = 16000, channels: int = 1) -> str:
     """Write a minimal silent WAV file to a temp path and return the path.
 
     The RIFF/WAV header is constructed manually using struct.pack so that
     each field offset is explicit and there is no dependency on an external
     audio library for fixture creation.
     """
-    data_size = num_samples * 2
+    data_size = num_samples * 2 * channels
     buf = io.BytesIO()
     buf.write(b"RIFF"); buf.write(struct.pack("<I", 36 + data_size))
     buf.write(b"WAVE"); buf.write(b"fmt ")
     buf.write(struct.pack("<I", 16))
     buf.write(struct.pack("<H", 1))            # PCM
-    buf.write(struct.pack("<H", 1))            # mono
+    buf.write(struct.pack("<H", channels))
     buf.write(struct.pack("<I", sample_rate))
-    buf.write(struct.pack("<I", sample_rate * 2))
-    buf.write(struct.pack("<H", 2))
+    buf.write(struct.pack("<I", sample_rate * 2 * channels))
+    buf.write(struct.pack("<H", 2 * channels))
     buf.write(struct.pack("<H", 16))
     buf.write(b"data"); buf.write(struct.pack("<I", data_size))
     buf.write(b"\x00" * data_size)
@@ -116,63 +118,95 @@ class TestLoadAudioWav:
         with pytest.raises(Exception):
             load_audio_wav("/nonexistent/path/to/audio.wav")
 
+    def test_error_not_audio_raises(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(b"this is not audio at all")
+        try:
+            with pytest.raises(Exception):
+                load_audio_wav(tmp.name)
+        finally:
+            os.unlink(tmp.name)
 
-# ─── GradCAM ─────────────────────────────────────────────────────────────────
+    def test_success_other_sample_rates_are_resampled_to_16k(self):
+        path = _make_wav(44100, sample_rate=44100)  # one second
+        try:
+            assert abs(len(load_audio_wav(path)) - 16000) <= 32
+        finally:
+            os.unlink(path)
 
-class TestGradCAM:
-    # All tests in this class run the model forward pass with random weights.
-    # The gradient-based CAM computation is deterministic for a given input
-    # tensor, so the structural assertions (shape, range) are reliable even
-    # though the selected class and CAM values change each test run.
+    def test_success_stereo_is_down_mixed_to_one_channel(self):
+        path = _make_wav(16000, channels=2)
+        try:
+            audio = load_audio_wav(path)
+            assert audio.ndim == 1
+            assert len(audio) == 16000
+        finally:
+            os.unlink(path)
 
-    def test_success_cam_output_is_2d_numpy_array(self):
-        import torch
-        from torchvision import transforms
+    def test_success_decodes_browser_webm_opus(self):
+        # MediaRecorder's format on Chrome and Android: 0.5 s of a 440 Hz tone
+        import av
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            path = tmp.name
+        try:
+            with av.open(path, "w", format="webm") as out:
+                stream = out.add_stream("libopus", rate=48000)
+                t = np.arange(24000) / 48000
+                frame = av.AudioFrame.from_ndarray((0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)[None], format="flt", layout="mono")
+                frame.sample_rate = 48000
+                for packet in list(stream.encode(frame)) + list(stream.encode(None)):
+                    out.mux(packet)
+            audio = load_audio_wav(path)
+            assert abs(len(audio) - 8000) < 1600
+            assert np.abs(audio).max() > 0.1
+        finally:
+            os.unlink(path)
+
+
+# ─── Preprocessing and the student session ───────────────────────────────────
+
+class TestPreprocess:
+    def test_success_shape_and_dtype(self):
         from PIL import Image
+        x = preprocess(Image.new("RGB", (100, 60), color=(128, 64, 32)), IMG_SIZE)
+        assert x.shape == (1, 3, IMG_SIZE, IMG_SIZE)
+        assert x.dtype == np.float32
 
-        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE), color=(128, 64, 32))
-        tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
-
-        cam, class_idx = GradCAM(model).generate(tensor)
-        assert cam.ndim == 2
-
-    def test_success_cam_values_are_between_0_and_1(self):
-        import torch
-        from torchvision import transforms
+    def test_success_applies_imagenet_normalisation(self):
         from PIL import Image
+        x = preprocess(Image.new("RGB", (8, 8), color=(255, 0, 128)), 4)
+        assert x[0, 0, 0, 0] == pytest.approx((1.0 - 0.485) / 0.229, abs=1e-5)
+        assert x[0, 1, 0, 0] == pytest.approx((0.0 - 0.456) / 0.224, abs=1e-5)
+        assert x[0, 2, 0, 0] == pytest.approx((128 / 255 - 0.406) / 0.225, abs=1e-5)
 
-        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE), color=(200, 100, 50))
-        tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
 
-        cam, _ = GradCAM(model).generate(tensor)
+class TestSoftmax:
+    def test_success_sums_to_one_and_matches_the_definition(self):
+        logits = np.array([1.0, 2.0, 3.0])
+        expected = np.exp(logits) / np.exp(logits).sum()
+        assert softmax(logits) == pytest.approx(expected)
+
+    def test_edge_huge_logits_do_not_overflow(self):
+        p = softmax(np.array([1000.0, 0.0]))
+        assert p == pytest.approx([1.0, 0.0])
+
+
+class TestStudentSession:
+    def _run(self):
+        return server.student.run(["logits", "cam"], {"input": np.zeros((1, 3, IMG_SIZE, IMG_SIZE), np.float32)})
+
+    def test_success_returns_logits_for_every_output(self):
+        logits, _ = self._run()
+        assert logits.shape == (1, server.NUM_CLASSES + 1)
+
+    def test_success_cam_is_2d_and_between_0_and_1(self):
+        _, cam = self._run()
+        assert cam[0].ndim == 2
         assert cam.min() >= 0.0
         assert cam.max() <= 1.0
 
-    def test_success_class_idx_is_within_valid_range(self):
-        import torch
-        from torchvision import transforms
-        from PIL import Image
-
-        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE))
-        tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
-
-        _, class_idx = GradCAM(model).generate(tensor)
-        assert 0 <= class_idx < len(CLASS_NAMES)
-
-    def test_success_explicit_class_idx_is_respected(self):
-        import torch
-        from torchvision import transforms
-        from PIL import Image
-
-        img = Image.new("RGB", (IMG_SIZE, IMG_SIZE))
-        tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        tensor = tf(img).unsqueeze(0).to(DEVICE)  # the model sits on DEVICE (CUDA when visible)
-
-        _, returned_idx = GradCAM(model).generate(tensor, class_idx=2)
-        assert returned_idx == 2
+    def test_success_input_size_comes_from_the_model(self):
+        assert IMG_SIZE == server.student.get_inputs()[0].shape[2]
 
 
 # ─── create_heatmap_overlay ───────────────────────────────────────────────────

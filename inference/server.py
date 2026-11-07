@@ -1,7 +1,8 @@
 """
 SkinSense ML Inference Service
-Loads the distilled MobileNetV3-Large model and exposes a prediction API.
-Called by the Express backend when a screening is submitted.
+Runs the distilled MobileNetV3-Large model and Whisper on ONNX Runtime and exposes a prediction API.
+Called by the Express backend when a screening is submitted. PyTorch is only needed for training and exporting
+(export_mobile.py, export_server.py), never to serve.
 """
 import asyncio
 import io
@@ -11,22 +12,16 @@ import time
 import traceback
 import uuid
 import re
-from pathlib import Path
 
+import av
 import cv2
 import numpy as np
+import onnxruntime as ort
 import psutil
-import soundfile as sf
-import torch
-import torch.nn as nn
-import torch.nn.functional as torchF
-import torchvision.transforms as transforms
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
-from torchvision import models
-from transformers import pipeline as hf_pipeline
 
 from quality import (
     MAX_UPLOAD_BYTES,
@@ -38,30 +33,23 @@ from quality import (
     is_skin_image,
     is_too_blurry,
 )
+from whisper_onnx import ENCODER_FILE, WhisperOnnx, session_options
 
 # ── Config ────────────────────────────────────────────────────────────
 # Production student: CLIP dual-KD MobileNetV3-Large trained on the leak-free split at 320 px (seed picked on val):
 # 74.58% test / 70.85 macro-F1 on the clean test set, plus an 8th "not a skin lesion" output fitted on its frozen
 # features (notebooks/fit_not_lesion_head.py), which leaves the 7 disease outputs - and accuracy - unchanged.
-# _v2 = that output refit with close-up pet photos added to the negatives (v1, without pets: ..._notlesion.pth).
-# student_clean_res320_s2.pth is the same model without that output; the older 224 px student can be served with
-# MODEL_PATH=./models/student_large_clip_dualkd_distilled.pth IMG_SIZE=224 OOD_ENERGY_THRESHOLD=2.37.
-MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2_notlesion_v2.pth")
+# Same file as the PWA's model (export_mobile.py): it returns the logits and the Grad-CAM for the top disease.
+MODEL_PATH = os.environ.get("MODEL_PATH", "./models/student_clean_res320_s2_notlesion_v2.onnx")
 HEATMAP_DIR = os.environ.get("HEATMAP_DIR", "./heatmaps")
-# Default ASR: our whisper-small Urdu fine-tune (train_whisper_urdu.py, weights in git via LFS) - 23.6% WER vs the
-# turbo's 25.5% on the same FLEURS ur_pk clips, ~2.6x faster on CPU with ~43% less RAM. Falls back to the turbo
-# (download_asr_model.py) if the fine-tune is missing or still an un-pulled LFS pointer (run `git lfs pull`).
-def _usable_asr_dir(path):
-    weights = os.path.join(path, "model.safetensors")
-    return os.path.isdir(path) and (not os.path.exists(weights) or not is_lfs_pointer(weights))
-
-
-ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH") or next(
-    (p for p in ("./models/asr/whisper-small-urdu-ours", "./models/asr/whisper-urdu") if _usable_asr_dir(p)),
-    "./models/asr/whisper-urdu",
-)
+# Our whisper-small Urdu fine-tune (train_whisper_urdu.py) as int8 ONNX, the same files the PWA runs: 23.3 / 30.4 % WER
+# on FLEURS-100 / unseen Common Voice, against 23.6 / 29.8 % for the fp32 PyTorch model.
+ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "./models/asr/whisper-small-urdu-onnx")
 PORT = int(os.environ.get("INFERENCE_PORT", 5001))
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+THREADS = int(os.environ.get("INFERENCE_THREADS", min(4, os.cpu_count() or 1)))
+DEVICE = "cpu"
+MEAN = np.array([0.485, 0.456, 0.406], np.float32)[:, None, None]
+STD = np.array([0.229, 0.224, 0.225], np.float32)[:, None, None]
 
 CLASS_NAMES = [
     "Vitiligo",
@@ -74,70 +62,22 @@ CLASS_NAMES = [
 ]
 
 NUM_CLASSES = len(CLASS_NAMES)
-IMG_SIZE = int(os.environ.get("IMG_SIZE", 320))
 
 
-# ── Model Definition ──────────────────────────────────────────────────
-def build_student_large(num_classes=7):
-    model = models.mobilenet_v3_large(weights=None)
-    in_features = model.classifier[0].in_features
-    model.classifier = nn.Sequential(
-        nn.Linear(in_features, 512),
-        nn.Hardswish(),
-        nn.Dropout(p=0.3),
-        nn.Linear(512, num_classes),
-    )
-    return model
+def create_session(path):
+    return ort.InferenceSession(path, session_options(THREADS), providers=["CPUExecutionProvider"])
 
 
 # ── Preprocessing ─────────────────────────────────────────────────────
-inference_transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+def preprocess(pil_image, size):
+    """torchvision's Resize + ToTensor + Normalize on a PIL image: (1, 3, size, size) float32."""
+    pixels = np.asarray(pil_image.resize((size, size), Image.BILINEAR), np.float32).transpose(2, 0, 1) / 255.0
+    return ((pixels - MEAN) / STD)[None].astype(np.float32)
 
 
-# ── Grad-CAM Implementation ──────────────────────────────────────────
-class GradCAM:
-    def __init__(self, model):
-        self.model = model
-        self.gradients = None
-        self.activations = None
-        target_layer = model.features[-1]
-        target_layer.register_forward_hook(self._forward_hook)
-        target_layer.register_full_backward_hook(self._backward_hook)
-
-    def _forward_hook(self, module, input, output):
-        self.activations = output.detach()
-
-    def _backward_hook(self, module, grad_input, grad_output):
-        self.gradients = grad_output[0].detach()
-
-    def generate(self, input_tensor, class_idx=None):
-        self.model.eval()
-        input_tensor.requires_grad_(True)
-
-        output = self.model(input_tensor)
-
-        if class_idx is None:
-            class_idx = output.argmax(dim=1).item()
-
-        self.model.zero_grad()
-        target = output[0, class_idx]
-        target.backward()
-
-        gradients = self.gradients[0]
-        activations = self.activations[0]
-
-        weights = gradients.mean(dim=(1, 2))
-        cam = (weights[:, None, None] * activations).sum(dim=0)
-        cam = torchF.relu(cam)
-
-        if cam.max() > 0:
-            cam = cam / cam.max()
-
-        return cam.cpu().numpy(), class_idx
+def softmax(logits):
+    z = np.exp(logits - logits.max())
+    return z / z.sum()
 
 
 def create_heatmap_overlay(original_image, cam, alpha=0.4):
@@ -152,73 +92,39 @@ def create_heatmap_overlay(original_image, cam, alpha=0.4):
 
 
 # ── Load Models ───────────────────────────────────────────────────────
+# Deliberately without "onnx" in the name: the app reads that as "this ran on the phone" (ResultsPage, device-result).
 MODEL_VERSION = os.environ.get("MODEL_VERSION", "mobilenetv3-large-dualkd-clean320-notlesion-v4")
-print(f"Loading model from {MODEL_PATH} on {DEVICE}...")
-MODEL_LOADED = False
-state_dict = None
-if os.path.exists(MODEL_PATH):
-    if is_lfs_pointer(MODEL_PATH):
-        raise RuntimeError(
-            f"{MODEL_PATH} is a Git LFS pointer, not real weights. "
-            "Run `git lfs install && git lfs pull` and restart the service."
-        )
-    state_dict = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=True)
-# 7 outputs = the diseases; 8 = the diseases plus a trained "not a skin lesion" class (output index 7)
-NUM_OUTPUTS = state_dict["classifier.3.weight"].shape[0] if state_dict is not None else NUM_CLASSES
-HAS_NOT_LESION_CLASS = NUM_OUTPUTS > NUM_CLASSES
-model = build_student_large(NUM_OUTPUTS)
-
-if state_dict is not None:
-    model.load_state_dict(state_dict)
-    MODEL_LOADED = True
-    print("Model weights loaded successfully.")
-else:
-    MODEL_VERSION += "-UNTRAINED"
-    print(
-        f"WARNING: Model file not found at {MODEL_PATH}. Running with RANDOM weights; "
-        "predictions are meaningless and are tagged UNTRAINED."
+print(f"Loading model from {MODEL_PATH} on {DEVICE} with {THREADS} threads...")
+if os.path.exists(MODEL_PATH) and is_lfs_pointer(MODEL_PATH):
+    raise RuntimeError(
+        f"{MODEL_PATH} is a Git LFS pointer, not real weights. "
+        "Run `git lfs install && git lfs pull` and restart the service."
     )
+student = create_session(MODEL_PATH) if os.path.exists(MODEL_PATH) else None
+MODEL_LOADED = student is not None
+if MODEL_LOADED:
+    _, _, IMG_SIZE, _ = student.get_inputs()[0].shape
+    # 7 outputs = the diseases; 8 = the diseases plus a trained "not a skin lesion" class (output index 7)
+    HAS_NOT_LESION_CLASS = student.get_outputs()[0].shape[1] > NUM_CLASSES
+    print("Model loaded successfully.")
+else:
+    IMG_SIZE, HAS_NOT_LESION_CLASS = 320, False
+    print(f"WARNING: Model file not found at {MODEL_PATH}. /predict returns 503 until it is there.")
 
-model = model.to(DEVICE)
-model.eval()
-
-grad_cam = GradCAM(model)
 os.makedirs(HEATMAP_DIR, exist_ok=True)
 
 # ── Lesion-photo gate ─────────────────────────────────────────────────
 # "Is this a photo of a skin condition at all?", judged on GENERAL ImageNet features (notebooks/fit_lesion_gate.py).
 # The skin model sees everything as skin texture, so close-up pets or a baby on an armchair slipped past its own
 # not-a-lesion output and came back as Eczema; an ImageNet model still knows dogs, babies and furniture.
-LESION_GATE_PATH = os.environ.get("LESION_GATE_PATH", "./models/lesion_gate.pth")
+LESION_GATE_PATH = os.environ.get("LESION_GATE_PATH", "./models/lesion_gate.onnx")
 GATE_SIZE = 224
-gate_transform = transforms.Compose([
-    transforms.Resize((GATE_SIZE, GATE_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-
-class LesionGate(nn.Module):
-    """ImageNet MobileNetV3-Large up to its 1280-d layer, plus one logistic output: P(not a lesion photo)."""
-
-    def __init__(self):
-        super().__init__()
-        base = models.mobilenet_v3_large(weights=None)
-        self.features, self.avgpool = base.features, base.avgpool
-        self.classifier = nn.Sequential(base.classifier[0], base.classifier[1])  # Linear(960, 1280) + Hardswish
-        self.head = nn.Linear(1280, 1)
-
-    def forward(self, x):
-        return torch.sigmoid(self.head(self.classifier(torch.flatten(self.avgpool(self.features(x)), 1))))[:, 0]
-
-
 lesion_gate, LESION_GATE_THRESHOLD = None, None
 if os.path.exists(LESION_GATE_PATH) and not is_lfs_pointer(LESION_GATE_PATH):
-    gate_state = torch.load(LESION_GATE_PATH, map_location=DEVICE, weights_only=True)
-    LESION_GATE_THRESHOLD = float(os.environ.get("LESION_GATE_THRESHOLD", gate_state.pop("threshold").item()))
-    lesion_gate = LesionGate()
-    lesion_gate.load_state_dict(gate_state)
-    lesion_gate = lesion_gate.to(DEVICE).eval()
+    lesion_gate = create_session(LESION_GATE_PATH)
+    # export_server.py stores the threshold fitted with the gate inside the ONNX file
+    LESION_GATE_THRESHOLD = float(os.environ.get(
+        "LESION_GATE_THRESHOLD", lesion_gate.get_modelmeta().custom_metadata_map["threshold"]))
     print(f"Lesion gate loaded (threshold {LESION_GATE_THRESHOLD:.3f}).")
 else:
     print(f"Lesion gate not found at {LESION_GATE_PATH}; relying on the model's own not-a-lesion output.")
@@ -226,18 +132,13 @@ else:
 
 def warm_up():
     """
-    One dummy forward pass and one Grad-CAM pass at startup so the first real
-    request does not pay one-off costs (lazy kernel init, allocator growth).
-    This keeps cold-start latency out of the telemetry.
+    One dummy pass at startup so the first real request does not pay one-off costs (lazy kernel init, allocator
+    growth). This keeps cold-start latency out of the telemetry.
     """
-    dummy = torch.zeros(1, 3, IMG_SIZE, IMG_SIZE, device=DEVICE)
-    with torch.no_grad():
-        model(dummy)
-        if lesion_gate is not None:
-            lesion_gate(torch.zeros(1, 3, GATE_SIZE, GATE_SIZE, device=DEVICE))
-    grad_cam.generate(torch.zeros(1, 3, IMG_SIZE, IMG_SIZE, device=DEVICE), class_idx=0)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if student is not None:
+        student.run(None, {"input": np.zeros((1, 3, IMG_SIZE, IMG_SIZE), np.float32)})
+    if lesion_gate is not None:
+        lesion_gate.run(None, {"input": np.zeros((1, 3, GATE_SIZE, GATE_SIZE), np.float32)})
 
 
 WARMED_UP = False
@@ -247,17 +148,19 @@ try:
 except Exception:  # never block startup on warm-up
     traceback.print_exc()
 
-asr_pipe = None
-if os.path.isdir(ASR_MODEL_PATH):
-    print(f"Loading ASR model from {ASR_MODEL_PATH} ...")
-    asr_pipe = hf_pipeline(
-        "automatic-speech-recognition",
-        model=ASR_MODEL_PATH,
-        device=0 if torch.cuda.is_available() else -1,
-    )
-    print("ASR model ready.")
+# One voice note at a time: parallel decodes share the same CPU threads, so they gain little and multiply the RAM.
+# With this queue and the memory arena off, 6 requests at once peak at 0.87 GB; with neither, 2.3 GB.
+ASR_QUEUE = asyncio.Semaphore(1)
+asr_model = None
+if os.path.exists(os.path.join(ASR_MODEL_PATH, ENCODER_FILE)):
+    if is_lfs_pointer(os.path.join(ASR_MODEL_PATH, ENCODER_FILE)):
+        print(f"ASR model at {ASR_MODEL_PATH} is a Git LFS pointer. Run `git lfs pull` to enable transcription.")
+    else:
+        print(f"Loading ASR model from {ASR_MODEL_PATH} ...")
+        asr_model = WhisperOnnx(ASR_MODEL_PATH, threads=THREADS)
+        print("ASR model ready.")
 else:
-    print(f"ASR model not found at {ASR_MODEL_PATH}. Run download_asr_model.py to enable transcription.")
+    print(f"ASR model not found at {ASR_MODEL_PATH}. Run export_server.py or `git lfs pull` to enable transcription.")
 
 
 # ── FastAPI App ───────────────────────────────────────────────────────
@@ -276,8 +179,9 @@ def health():
     return {
         "status": "ok",
         "model": "MobileNetV3-Large (distilled)",
-        "asr_model": os.path.basename(os.path.normpath(ASR_MODEL_PATH)) if asr_pipe is not None else "not loaded",
-        "device": str(DEVICE),
+        "asr_model": os.path.basename(os.path.normpath(ASR_MODEL_PATH)) if asr_model is not None else "not loaded",
+        "device": DEVICE,
+        "runtime": f"onnxruntime {ort.__version__}",
         "classes": CLASS_NAMES,
         "model_version": MODEL_VERSION,
         "model_loaded": MODEL_LOADED,
@@ -286,19 +190,17 @@ def health():
     }
 
 
-def compute_prediction_entropy(probabilities: torch.Tensor) -> float:
-    """Shannon entropy of the predicted distribution (see quality.entropy_from_probs)."""
-    return entropy_from_probs(probabilities.tolist())
-
-
 @app.post("/predict")
 async def predict(image: UploadFile = File(...)):
     start_total = time.perf_counter()
     process = psutil.Process()
     ram_before = process.memory_info().rss / (1024 * 1024)
 
-    if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()
+    if student is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "The skin model is not loaded on the inference service.", "code": "MODEL_NOT_LOADED"},
+        )
 
     # ── Phase 1: Preprocessing & Runtime Validation ──
     start_prep = time.perf_counter()
@@ -338,14 +240,13 @@ async def predict(image: UploadFile = File(...)):
             },
         )
 
-    input_tensor = inference_transform(pil_image).unsqueeze(0).to(DEVICE)
+    input_tensor = preprocess(pil_image, IMG_SIZE)
     preprocess_ms = int((time.perf_counter() - start_prep) * 1000)
 
     # Check 3: is this a photo of a skin condition at all? (general-image gate)
     lesion_gate_probability = None
     if lesion_gate is not None:
-        with torch.no_grad():
-            lesion_gate_probability = float(lesion_gate(gate_transform(pil_image).unsqueeze(0).to(DEVICE))[0].item())
+        lesion_gate_probability = float(lesion_gate.run(None, {"input": preprocess(pil_image, GATE_SIZE)})[0][0])
         if lesion_gate_probability >= LESION_GATE_THRESHOLD:
             return JSONResponse(
                 status_code=400,
@@ -356,28 +257,23 @@ async def predict(image: UploadFile = File(...)):
                 },
             )
 
-    # ── Phase 2: Model Forward Pass ──
+    # ── Phase 2: Model Forward Pass (the Grad-CAM for the top disease comes out of the same pass) ──
     start_infer = time.perf_counter()
-    with torch.no_grad():
-        full_logits = model(input_tensor)
-        logits = full_logits[:, :NUM_CLASSES]
-        probabilities = torch.softmax(logits, dim=1)[0]
-    not_lesion_probability = (
-        float(torch.softmax(full_logits, dim=1)[0, NUM_CLASSES].item()) if HAS_NOT_LESION_CLASS else None
-    )
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    full_logits, cam = student.run(["logits", "cam"], {"input": input_tensor})
+    full_logits, cam = full_logits[0].astype(np.float64), cam[0]
+    logits = full_logits[:NUM_CLASSES]
+    probabilities = softmax(logits)
+    not_lesion_probability = float(softmax(full_logits)[NUM_CLASSES]) if HAS_NOT_LESION_CLASS else None
     inference_ms = int((time.perf_counter() - start_infer) * 1000)
 
-    all_scores = {name: round(probabilities[i].item(), 4) for i, name in enumerate(CLASS_NAMES)}
+    all_scores = {name: round(float(probabilities[i]), 4) for i, name in enumerate(CLASS_NAMES)}
 
-    sorted_probs, sorted_indices = torch.sort(probabilities, descending=True)
-    top_idx = sorted_indices[0].item()
-    top_condition = CLASS_NAMES[top_idx]
-    confidence_score = float(sorted_probs[0].item())
-    confidence_margin = confidence_score - float(sorted_probs[1].item())
-    entropy = compute_prediction_entropy(probabilities)
-    energy = float(torch.logsumexp(logits[0], dim=0).item())
+    sorted_indices = np.argsort(probabilities)[::-1]
+    top_condition = CLASS_NAMES[int(sorted_indices[0])]
+    confidence_score = float(probabilities[sorted_indices[0]])
+    confidence_margin = confidence_score - float(probabilities[sorted_indices[1]])
+    entropy = entropy_from_probs(probabilities.tolist())
+    energy = float(np.logaddexp.reduce(logits))
 
     # ── Phase 3: Out-of-distribution / non-lesion check ──
     # A photo the model recognises as not a skin lesion at all (an object, a scene, a texture) is rejected like a
@@ -395,7 +291,6 @@ async def predict(image: UploadFile = File(...)):
 
     # ── Phase 4: Grad-CAM explainability heatmap ──
     start_cam = time.perf_counter()
-    cam, _ = grad_cam.generate(input_tensor.detach().clone(), class_idx=top_idx)
 
     heatmap_id = str(uuid.uuid4())
     overlay = create_heatmap_overlay(pil_image, cam)
@@ -409,18 +304,14 @@ async def predict(image: UploadFile = File(...)):
     ram_after = process.memory_info().rss / (1024 * 1024)
     server_ram_used_mb = round(max(0.0, ram_after - ram_before), 2)
 
-    gpu_vram_used_mb = 0.0
-    if torch.cuda.is_available():
-        gpu_vram_used_mb = round(torch.cuda.max_memory_allocated() / (1024 * 1024), 2)
-
     telemetry_data = {
         "image_preprocess_ms": preprocess_ms,
         "model_inference_ms": inference_ms,
         "gradcam_generation_ms": gradcam_ms,
         "total_server_time_ms": total_server_time_ms,
         "server_ram_used_mb": server_ram_used_mb,
-        "gpu_vram_used_mb": gpu_vram_used_mb,
-        "device_type": str(DEVICE.type),
+        "gpu_vram_used_mb": 0.0,
+        "device_type": DEVICE,
         "blur_score": round(blur_score, 1),
         "entropy": round(entropy, 3),
         "energy": round(energy, 3),
@@ -444,54 +335,28 @@ async def predict(image: UploadFile = File(...)):
 def load_audio_wav(file_path: str, target_sr: int = 16000) -> np.ndarray:
     """
     Decodes audio from disk into a 1D float32 numpy array resampled to target_sr (16 kHz).
-    Tolerates raw WAV, WebM/Opus, OGG, and MP4 containers via fallback readers.
+    Reads WAV, WebM/Opus, OGG and MP4 alike: PyAV bundles FFmpeg, so nothing else has to be installed.
     """
-    # Attempt 1: soundfile (fast standard PCM loader)
-    try:
-        data, sr = sf.read(file_path, dtype="float32", always_2d=True)
-        audio = data.mean(axis=1)
-        if sr != target_sr:
-            import librosa
-            audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
-        return audio.astype(np.float32)
-    except Exception:
-        pass
-
-    # Attempt 2: librosa (uses audioread / ffmpeg backend for WebM and compressed audio)
-    try:
-        import librosa
-        audio, _ = librosa.load(file_path, sr=target_sr, mono=True)
-        return audio.astype(np.float32)
-    except Exception:
-        pass
-
-    # Attempt 3: torchaudio
-    try:
-        import torchaudio
-        waveform, sr = torchaudio.load(file_path)
-        if waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
-        if sr != target_sr:
-            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=target_sr)
-            waveform = resampler(waveform)
-        return waveform.squeeze().cpu().numpy().astype(np.float32)
-    except Exception:
-        pass
-
-    raise RuntimeError(
-        f"Unable to decode audio from {file_path}. Ensure ffmpeg is installed and available in PATH."
-    )
+    resampler = av.AudioResampler(format="flt", layout="mono", rate=target_sr)
+    chunks = []
+    with av.open(file_path) as container:
+        if not container.streams.audio:
+            raise RuntimeError(f"No audio stream in {file_path}")
+        for frame in container.decode(container.streams.audio[0]):
+            chunks += [f.to_ndarray().ravel() for f in resampler.resample(frame)]
+    chunks += [f.to_ndarray().ravel() for f in resampler.resample(None)]
+    return np.concatenate(chunks).astype(np.float32) if chunks else np.zeros(0, np.float32)
 
 
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
     print(f"\n[ASR] Incoming request: filename='{audio.filename}', content_type='{audio.content_type}'")
     
-    if asr_pipe is None:
-        print("[ASR] Rejected: asr_pipe is None (model not loaded).")
+    if asr_model is None:
+        print("[ASR] Rejected: asr_model is None (model not loaded).")
         return JSONResponse(
             status_code=503,
-            content={"error": "ASR model not loaded. Run inference/download_asr_model.py first."},
+            content={"error": "ASR model not loaded. Run `git lfs pull` or inference/export_server.py first."},
         )
 
     contents = await audio.read()
@@ -512,18 +377,12 @@ async def transcribe(audio: UploadFile = File(...)):
         audio_array = await asyncio.to_thread(load_audio_wav, tmp_path, 16000)
         print(f"[ASR] Audio decoded. Sample count: {len(audio_array)} ({round(len(audio_array)/16000, 2)}s duration)")
 
-        print("[ASR] Running Whisper pipeline on worker thread...")
-        def _run_pipeline():
-            return asr_pipe(
-                {"array": audio_array, "sampling_rate": 16000},
-                generate_kwargs={"language": "urdu", "task": "transcribe"},
-            )
-
-        result = await asyncio.to_thread(_run_pipeline)
+        print("[ASR] Running Whisper on worker thread...")
+        async with ASR_QUEUE:
+            transcript_text = await asyncio.to_thread(asr_model.transcribe, audio_array)
         elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
         print(f"[ASR] Whisper transcription completed in {elapsed_ms} ms")
 
-        transcript_text = result.get("text", "").strip()
         print(f"[ASR] Result: \"{transcript_text}\"")
 
         tokens = transcript_text.split()
