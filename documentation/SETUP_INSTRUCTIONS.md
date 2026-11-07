@@ -60,7 +60,9 @@ ai-optimization-for-low-resource-devices/
 ├── inference/                    # FastAPI ML service (port 5001)
 │   ├── server.py                 # /health, /predict, /transcribe, /heatmaps
 │   ├── quality.py                # blur / skin / confidence guards (torch-free)
-│   ├── download_asr_model.py     # one-time Whisper Urdu download
+│   ├── whisper_onnx.py           # torch-free Whisper features and decoder
+│   ├── export_server.py          # builds the ONNX files the service loads (dev only)
+│   ├── download_asr_model.py     # optional: the old turbo Whisper, for benchmark_asr.py only
 │   ├── requirements.txt
 │   ├── models/
 │   │   ├── student_large_distilled.pth   # Git LFS
@@ -146,14 +148,13 @@ Edit `server/.env`:
 cd inference
 python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r requirements.txt   # includes psutil (used for runtime memory profiling)
-python download_asr_model.py      # one time, needs internet, ~1.5 GB
+pip install -r requirements.txt   # ONNX Runtime, no PyTorch; includes psutil (used for runtime memory profiling)
 ```
-Optional GPU build of PyTorch (adjust CUDA version to yours):
+The models come with `git lfs pull`; nothing is downloaded at runtime. For training, exporting and the tests, use `pip install -r requirements-dev.txt` instead, which adds PyTorch. A GPU build of PyTorch only speeds up training (adjust the CUDA version to yours):
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
-Optional environment variables: `MODEL_PATH`, `HEATMAP_DIR`, `ASR_MODEL_PATH`, `INFERENCE_PORT`.
+Optional environment variables: `MODEL_PATH`, `LESION_GATE_PATH`, `HEATMAP_DIR`, `ASR_MODEL_PATH`, `INFERENCE_PORT`, `INFERENCE_THREADS`.
 
 ## 5. Frontend
 
@@ -221,7 +222,7 @@ Server tests are fully mocked (no database, no network). `inference/tests/test_q
 | Dashboard says "No database password configured" | Set `DB_PASSWORD` (or `DASHBOARD_DB_PASSWORD`) in `server/.env` |
 | Screening returns "too blurry" / "no skin detected" | The runtime guards rejected the photo: retake in good light, in focus, with skin in frame |
 | Inference service exits with "is a Git LFS pointer" | Run `git lfs pull` and restart |
-| Voice transcript is empty | Whisper model not downloaded: run `python download_asr_model.py` |
+| Voice transcript is empty | Whisper files missing or still LFS pointers: run `git lfs pull` |
 | `ECONNREFUSED` on port 5432 | PostgreSQL not running or wrong DB credentials in `.env` |
 | Vite fails to start | Node.js older than 20.19: upgrade Node |
 | CORS errors | Frontend must run on port 5173 |

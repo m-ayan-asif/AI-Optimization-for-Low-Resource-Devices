@@ -587,4 +587,43 @@ The baby and the puppy are now both rejected in the live app.
 - About **+52 MiB** RAM in the inference container (605 → 657 MiB), and one extra small CNN pass per photo.
 - **Not yet on the phone:** the on-device path still relies on the skin model's own not-lesion output.
 
-**Next (not started):** a PyTorch-free server. PyTorch alone is 302 MB on import, against 53 MB for ONNX Runtime; the plan is saved in the project notes.
+**Next:** a PyTorch-free server, done in section 12.
+
+
+## 12. Serving on ONNX Runtime, without PyTorch (7 Nov)
+
+**Change:** `inference/server.py` now runs on ONNX Runtime using the same student and int8 Whisper files as the phone, plus the lesion gate exported to ONNX (`export_server.py`). PyTorch stays for training and exporting (`requirements-dev.txt`). The Whisper features and greedy decoder are in `whisper_onnx.py`.
+
+**Same answers.** The old and new `server.py`, on the same 3,936 images (val and test splits of a new leak-free split, local test uploads, out-of-scope skin images, a non-lesion photo), both on CPU:
+
+| Check | Result |
+|---|---|
+| Same HTTP status, error code, status and top condition | 3,936 / 3,936, across all five outcomes |
+| Largest class-score difference | 0.0001 (rounding) |
+| Heatmaps (3,612 compared) | largest single-pixel difference 3 / 255 |
+| Log-mel features vs `transformers` | max difference 2 x 10^-5; filter bank identical |
+| Decoder vs `transformers.js` on the same int8 files | 12 / 12 local recordings identical |
+
+**Cheaper.** Real HTTP, 4 threads, CPU build of PyTorch, Windows, same machine and load:
+
+| | PyTorch | ONNX Runtime |
+|---|---|---|
+| RAM after startup | 1,534 MiB | 507 MiB |
+| Peak RAM, one request at a time | 2,230 MiB | 705 MiB |
+| Peak RAM, up to 6 requests at once | 5,222 MiB | 869 MiB |
+| RAM settled after the load | 1,836 MiB | 595 MiB |
+| Image request, median | 195 ms | 124 ms |
+| 9 WAV voice notes (2-8 s), median | 5.2 s | 1.3 s |
+
+The PyTorch peak is, if anything, understated: this machine has no FFmpeg, so its WebM voice notes failed instead of being decoded.
+
+**Trade-offs:**
+- The server's Whisper is now int8, not fp32, so a transcript can differ slightly (5 / 9 identical, similarity 0.89 at worst on these clips). WER is unchanged within noise (section 10: 23.3 / 30.4 vs 23.6 / 29.8).
+- No GPU serving and no turbo Whisper fallback.
+- A missing model now returns 503 `MODEL_NOT_LOADED`, instead of predictions from random weights tagged `-UNTRAINED`.
+
+**Memory found on the way:** with ONNX Runtime's defaults, 6 requests at once peaked at 2.3 GB and stayed at 2.1 GB, because parallel Whisper decodes multiply the RAM and the memory arena keeps it. Queuing voice notes and turning the arena off gave 0.87 GB, and voice notes did not get slower.
+
+**Measurement trap:** PyTorch appeared to leak about 4.3 MB per image under FastAPI's `TestClient`, but its memory is flat over real HTTP (2,027 to 2,021 MiB across 400 images), so this is not a production leak. Measure memory against a running service, not a test client.
+
+**Not done yet:** the Docker image has not been built or measured with these changes, and a physical phone is still untested.

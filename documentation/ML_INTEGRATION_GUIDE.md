@@ -79,9 +79,9 @@ cd C:\Users\lbrahim\Desktop\FYP-SkinSense-UI\inference
 pip install -r requirements.txt
 ```
 
-**Note on PyTorch:** The above installs CPU-only PyTorch by default. For inference on
-a web server, CPU is fine and simpler. If you want GPU inference, install the CUDA
-version instead:
+**Note on PyTorch:** The service runs on ONNX Runtime and does not need PyTorch. Training,
+exporting and the tests do: use `pip install -r requirements-dev.txt` for those. If you
+want GPU training, install the CUDA version as well:
 
 ```powershell
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
