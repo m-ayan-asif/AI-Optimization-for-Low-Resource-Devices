@@ -60,7 +60,7 @@ jobs:
         run: npm test -- --run
 
   # -------------------------------------------------------------
-  # 3. Python ML Inference Service Tests (pytest - 87 tests)
+  # 3. Python ML Inference Service Tests (pytest; conftest.py builds a tiny ONNX model, the real files are not needed)
   # -------------------------------------------------------------
   test-inference:
     name: Inference Service Tests (pytest)
@@ -79,21 +79,14 @@ jobs:
           cache: 'pip'
           cache-dependency-path: inference/requirements.txt
 
-      - name: Install CPU-only PyTorch (Faster CI downloads)
+      - name: Install service and test dependencies (no PyTorch, like production)
         run: |
           python -m pip install --upgrade pip
-          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
-      - name: Install service dependencies
-        run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov httpx
+          pip install pytest pytest-cov httpx onnx
 
       - name: Run pytest
         env:
-          MODEL_PATH: '/nonexistent/model.pth'
-          ASR_MODEL_PATH: '/nonexistent/asr'
-          HEATMAP_DIR: '/tmp/skinsense_heatmaps'
           INFERENCE_PORT: '5002'
         run: |
           python -m pytest tests/ -v

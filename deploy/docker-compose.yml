@@ -26,13 +26,12 @@ services:
     build: ../inference
     restart: unless-stopped
     environment:
-      MODEL_PATH: ${MODEL_PATH:-./models/student_clean_res320_s2_notlesion_v2.pth}
-      IMG_SIZE: ${IMG_SIZE:-320}
-      ASR_MODEL_PATH: ${ASR_MODEL_PATH:-./models/asr/whisper-small-urdu-ours}
-      OMP_NUM_THREADS: ${INFERENCE_THREADS:-4}
+      MODEL_PATH: ${MODEL_PATH:-./models/student_clean_res320_s2_notlesion_v2.onnx}
+      ASR_MODEL_PATH: ${ASR_MODEL_PATH:-./models/asr/whisper-small-urdu-onnx}
+      INFERENCE_THREADS: ${INFERENCE_THREADS:-4}
     volumes:
       - heatmaps:/data/heatmaps
-    # Measured on CPU: ~2.85 GB peak with the 320px student + whisper-small loaded and transcribing.
+    # Peaked at 0.87 GB natively on ONNX Runtime (see deploy/README.md). The cap stays generous until it is re-measured in Docker.
     mem_limit: ${INFERENCE_MEM_LIMIT:-4g}
 
   api:
