@@ -15,10 +15,11 @@ internal Compose network. Patient uploads (`/data/uploads`) are not exposed over
 ## Requirements
 
 - Docker Engine 24+ with Compose v2 (Docker Desktop on Windows/macOS is fine).
-- **RAM: 3 GB free minimum, 4 GB+ recommended.** Measured in the container (Linux, CPU-only PyTorch) after an image
-  prediction with Grad-CAM and a Whisper transcription: inference peaked at 1.57 GB (cgroup `memory.peak`) and
-  settled at ~1.25 GB; the other three containers together use ~100 MB. Running natively on Windows with the CUDA
-  build of PyTorch, the same stack peaks at ~2.85 GB. Inference is capped at 4 GB by `INFERENCE_MEM_LIMIT`.
+- **RAM: 2 GB free is enough; 3 GB+ is comfortable.** Inference runs on ONNX Runtime without PyTorch. Measured natively
+  on Windows over real HTTP, with images and Whisper transcriptions up to 6 at once, it peaked at 0.87 GB and settled
+  at about 0.6 GB (the PyTorch build peaked at 5.2 GB and settled at 1.8 GB under the same load). This has not been
+  re-measured inside Docker yet, so inference stays capped at 4 GB by `INFERENCE_MEM_LIMIT` for now. The other three
+  containers together use ~100 MB.
 - Disk: ~6 GB for images (the inference image is ~5.3 GB, mostly PyTorch CPU + the 0.9 GB Whisper weights).
 - CPU: 4+ cores recommended. Measured in the container on a 12-thread desktop CPU: a 320 px prediction including Grad-CAM ~200-300 ms server time, a 5 s voice note a few seconds.
 - Git LFS, because model weights are LFS files.
@@ -86,11 +87,10 @@ Phones need HTTPS: service workers (offline PWA) and the microphone only work in
 | `POSTGRES_PASSWORD` | required | Used by both `db` and `api`. Changing it after the first boot needs an `ALTER USER` in Postgres. |
 | `JWT_SECRET` | required | ≥32 random characters. Rotating it logs everyone out. |
 | `JWT_EXPIRES_IN` | `30m` | Session length. |
-| `MODEL_PATH` | `./models/student_clean_res320_s2_notlesion_v2.pth` | Student checkpoint inside the inference image (8 outputs: 7 diseases + "not a skin lesion"). |
-| `IMG_SIZE` | `320` | Must match the checkpoint (320 for the clean-split production student, 224 for the old one). |
-| `ASR_MODEL_PATH` | `./models/asr/whisper-small-urdu-ours` | Only this Whisper is copied into the image (see `inference/.dockerignore`). |
-| `INFERENCE_THREADS` | `4` | PyTorch/OpenMP threads. Set to the number of physical cores you can spare. |
-| `INFERENCE_MEM_LIMIT` | `4g` | Hard cap on the inference container. Do not go below ~2.5g (1.6 GB measured peak plus headroom for long voice notes). |
+| `MODEL_PATH` | `./models/student_clean_res320_s2_notlesion_v2.onnx` | Student model inside the inference image (8 outputs: 7 diseases + "not a skin lesion"). The input size comes from the model. |
+| `ASR_MODEL_PATH` | `./models/asr/whisper-small-urdu-onnx` | Only this Whisper is copied into the image (see `inference/.dockerignore`). |
+| `INFERENCE_THREADS` | `4` | ONNX Runtime threads per model. Set to the number of physical cores you can spare. |
+| `INFERENCE_MEM_LIMIT` | `4g` | Hard cap on the inference container. A 0.87 GB peak was measured natively; re-measure in Docker before lowering it. |
 | `INFERENCE_TIMEOUT_MS` | `60000` | API → inference timeout. CPU Whisper on a long voice note can take tens of seconds. |
 
 ## Operating it

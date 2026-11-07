@@ -1,4 +1,4 @@
-# Only server.py, quality.py, requirements.txt and the served models go into the image.
+# Only server.py, quality.py, whisper_onnx.py, requirements.txt and the served ONNX models go into the image.
 **/__pycache__
 *.pyc
 .pytest_cache
@@ -14,9 +14,12 @@ download_asr_model.py
 eval_guards.py
 sweep_guards.py
 export_mobile.py
+export_server.py
+requirements-dev.txt
 Dockerfile
 .dockerignore
 
-# ASR: ship only our whisper-small fine-tune; the 3.1 GB turbo and the community checkpoints stay out.
+# Serving needs ONNX only: the PyTorch checkpoints and every other Whisper stay out.
+models/*.pth
 models/asr/*
-!models/asr/whisper-small-urdu-ours
+!models/asr/whisper-small-urdu-onnx

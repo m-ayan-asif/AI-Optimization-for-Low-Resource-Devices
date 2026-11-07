@@ -1,9 +1,9 @@
 """
 Tests for GET /health and POST /predict.
 
-The model runs with random weights (MODEL_PATH points to a nonexistent file),
-so the predicted class and confidence values are arbitrary.  What we can still
-assert rigorously:
+The model is a tiny ONNX file with random weights (built in conftest.py), so the
+predicted class and confidence values are arbitrary.  What we can still assert
+rigorously:
   - Response shape: all required JSON keys are present.
   - Numeric contracts: confidence_score in [0, 1]; all_scores sums to ~1.0
     (softmax property holds regardless of weights).
@@ -13,6 +13,8 @@ assert rigorously:
 """
 
 import os
+
+import numpy as np
 import pytest
 
 # ─── GET /health ──────────────────────────────────────────────────────────────
@@ -39,9 +41,9 @@ class TestHealth:
 
     def test_success_health_reports_model_state(self, client):
         body = client.get("/health").json()
-        assert body["model_loaded"] is False          # tests run without weights
-        assert body["model_version"].endswith("-UNTRAINED")
+        assert body["model_loaded"] is True
         assert body["warmed_up"] is True
+        assert body["runtime"].startswith("onnxruntime")
 
     def test_success_asr_model_not_loaded_shown_in_status(self, client):
         # ASR_MODEL_PATH is nonexistent, so asr_pipe is None
@@ -79,10 +81,18 @@ class TestPredict:
         if body["status"] == "out_of_scope":
             assert body["top_condition"] == "No Disease / Inconclusive"
 
-    def test_success_untrained_weights_are_tagged_in_model_version(self, client, png_bytes):
-        # Tests run without real weights; the response must say so.
+    def test_error_503_when_the_model_is_not_loaded(self, client, png_bytes, monkeypatch):
+        # A missing model must never produce a prediction: Express then uses its dev fallback or returns 503.
+        import server
+        monkeypatch.setattr(server, "student", None)
+        res = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")})
+        assert res.status_code == 503
+        assert res.json()["code"] == "MODEL_NOT_LOADED"
+
+    def test_success_model_version_does_not_say_onnx(self, client, png_bytes):
+        # The app reads "onnx" in model_version as "this ran on the phone" (ResultsPage.jsx, /device-result).
         body = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()
-        assert body["model_version"].endswith("-UNTRAINED")
+        assert "onnx" not in body["model_version"]
 
     def test_success_telemetry_block_has_profiling_fields(self, client, png_bytes):
         t = client.post("/predict", files={"image": ("skin.png", png_bytes, "image/png")}).json()["telemetry"]
@@ -198,28 +208,28 @@ class TestHeatmapRoute:
 
 # ─── 8-output models: the trained "not a skin lesion" class ──────────────────
 
+class FakeStudent:
+    """Stands in for the student's ONNX session with fixed logits."""
+
+    def __init__(self, logits):
+        self.logits = logits
+
+    def run(self, names, feed):
+        return [np.array([self.logits], np.float32), np.full((1, 10, 10), 0.5, np.float32)]
+
+
 class TestNotALesionClass:
     """The served model can have an 8th output, "not a skin lesion". A photo that scores high on it is rejected
     with NOT_A_LESION (like NO_SKIN_DETECTED) instead of getting a diagnosis; otherwise the 7 disease outputs are
     used exactly as before."""
 
-    def _eight_class_model(self, not_lesion_bias):
-        import torch
+    def _patch(self, monkeypatch, logits, has_not_lesion=True):
         import server
-        m = server.build_student_large(8)
-        with torch.no_grad():
-            m.classifier[3].bias.zero_()
-            m.classifier[3].bias[7] = not_lesion_bias
-        return m.to(server.DEVICE).eval()
-
-    def _patch(self, monkeypatch, model):
-        import server
-        monkeypatch.setattr(server, "model", model)
-        monkeypatch.setattr(server, "grad_cam", server.GradCAM(model))
-        monkeypatch.setattr(server, "HAS_NOT_LESION_CLASS", True)
+        monkeypatch.setattr(server, "student", FakeStudent(logits))
+        monkeypatch.setattr(server, "HAS_NOT_LESION_CLASS", has_not_lesion)
 
     def test_error_rejects_photo_the_model_calls_not_a_lesion(self, client, png_bytes, monkeypatch):
-        self._patch(monkeypatch, self._eight_class_model(not_lesion_bias=50.0))
+        self._patch(monkeypatch, [0, 0, 0, 0, 0, 0, 0, 50.0])
         res = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")})
         assert res.status_code == 400
         body = res.json()
@@ -227,13 +237,27 @@ class TestNotALesionClass:
         assert body["not_lesion_probability"] > 0.99
 
     def test_success_lesion_photo_uses_only_the_seven_disease_outputs(self, client, png_bytes, monkeypatch):
-        self._patch(monkeypatch, self._eight_class_model(not_lesion_bias=-50.0))
+        self._patch(monkeypatch, [0, 0, 8.0, 0, 0, 0, 0, -50.0])
         res = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")})
         assert res.status_code == 200
         body = res.json()
         assert len(body["all_scores"]) == 7
         assert abs(sum(body["all_scores"].values()) - 1.0) < 0.01
+        assert body["top_condition"] == "Psoriasis"
         assert body["telemetry"]["not_lesion_probability"] < 0.01
+
+    def test_success_seven_output_model_still_works(self, client, png_bytes, monkeypatch):
+        self._patch(monkeypatch, [8.0, 0, 0, 0, 0, 0, 0], has_not_lesion=False)
+        body = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")}).json()
+        assert body["top_condition"] == "Vitiligo"
+        assert body["telemetry"]["not_lesion_probability"] is None
+
+    def test_success_weak_logits_are_reported_as_inconclusive(self, client, png_bytes, monkeypatch):
+        # Same guards as before the move to ONNX: a near-uniform prediction is not a diagnosis.
+        self._patch(monkeypatch, [0.01, 0, 0, 0, 0, 0, 0, -50.0])
+        body = client.post("/predict", files={"image": ("x.png", png_bytes, "image/png")}).json()
+        assert body["status"] == "out_of_scope"
+        assert body["top_condition"] == "No Disease / Inconclusive"
 
 
 
@@ -243,12 +267,12 @@ class TestLesionGate:
     """The gate runs before the skin model: a photo it judges "not a lesion photo" gets NOT_A_LESION."""
 
     def _gate(self, monkeypatch, prob, threshold=0.5):
-        import torch
         import server
 
-        class FixedGate(torch.nn.Module):
-            def forward(self, x):
-                return torch.full((x.shape[0],), prob)
+        class FixedGate:
+            def run(self, names, feed):
+                assert feed["input"].shape == (1, 3, server.GATE_SIZE, server.GATE_SIZE)
+                return [np.array([prob], np.float32)]
 
         monkeypatch.setattr(server, "lesion_gate", FixedGate())
         monkeypatch.setattr(server, "LESION_GATE_THRESHOLD", threshold)

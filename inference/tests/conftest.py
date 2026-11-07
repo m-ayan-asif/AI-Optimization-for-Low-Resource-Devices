@@ -2,16 +2,16 @@
 Shared fixtures for all inference service tests (pytest conftest).
 
 Why env vars must be set before importing server.py:
-  MobileNetV3 and the Whisper ASR pipeline are loaded at module level when
-  server.py is first imported.  Setting the env vars beforehand controls what
-  happens during that import:
-    MODEL_PATH     → nonexistent .pth file → model initialises with random weights.
-                     The API shape (output keys, HTTP codes) is fully exercised;
-                     the actual prediction values are meaningless but that's fine.
-    ASR_MODEL_PATH → nonexistent directory → asr_pipe is set to None, so every
-                     /transcribe request returns 503.  Tests verify this contract.
-    HEATMAP_DIR    → a real temporary directory → Grad-CAM PNGs can be written
-                     to disk and subsequently served by GET /heatmaps/{filename}.
+  The ONNX sessions are created at module level when server.py is first imported.
+  Setting the env vars beforehand controls what happens during that import:
+    MODEL_PATH     -> a tiny ONNX model built right here (random weights, same inputs and outputs as the real student).
+                      The API shape (output keys, HTTP codes) is fully exercised on a real ONNX Runtime session without
+                      Git LFS; the prediction values are meaningless but that's fine. tests/test_real_models.py checks
+                      the real files when they are present.
+    ASR_MODEL_PATH -> nonexistent directory -> asr_model is None, so every
+                      /transcribe request returns 503.  Tests verify this contract.
+    HEATMAP_DIR    -> a real temporary directory -> Grad-CAM PNGs can be written
+                      to disk and subsequently served by GET /heatmaps/{filename}.
 
 Fixture scope is "module" so the FastAPI TestClient and image/audio byte
 buffers are created once per test module, not once per test function.
@@ -25,12 +25,47 @@ import tempfile
 
 import pytest
 
-# ── Point paths at non-existent locations so the server starts without downloads
-_tmp_heatmap_dir = tempfile.mkdtemp(prefix="skinsense_test_heatmaps_")
-os.environ.setdefault("MODEL_PATH", "/nonexistent/model.pth")
-os.environ.setdefault("ASR_MODEL_PATH", "/nonexistent/asr")
-os.environ.setdefault("LESION_GATE_PATH", "/nonexistent/lesion_gate.pth")  # tests patch the gate in explicitly
-os.environ["HEATMAP_DIR"] = _tmp_heatmap_dir
+
+def _write_fake_student(path):
+    """(1, 3, 320, 320) -> logits (1, 8) + cam (1, 10, 10), like the real student. Near-uniform: not-a-lesion stays low."""
+    import numpy as np
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+
+    rng = np.random.default_rng(0)
+    bias = np.zeros(8, np.float32)
+    bias[7] = -8.0
+    cam = rng.random((1, 10, 10)).astype(np.float32)
+    initializers = [
+        numpy_helper.from_array(rng.normal(0, 0.02, (3, 8)).astype(np.float32), "weights"),
+        numpy_helper.from_array(bias, "bias"),
+        numpy_helper.from_array(cam / cam.max(), "cam_values"),
+    ]
+    nodes = [
+        helper.make_node("ReduceMean", ["input"], ["pooled"], axes=[2, 3], keepdims=0),
+        helper.make_node("MatMul", ["pooled", "weights"], ["scores"]),
+        helper.make_node("Add", ["scores", "bias"], ["logits"]),
+        helper.make_node("Identity", ["cam_values"], ["cam"]),
+    ]
+    graph = helper.make_graph(
+        nodes, "fake_student",
+        [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 320, 320])],
+        [helper.make_tensor_value_info("logits", TensorProto.FLOAT, [1, 8]),
+         helper.make_tensor_value_info("cam", TensorProto.FLOAT, [1, 10, 10])],
+        initializers,
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+    model.ir_version = 8
+    onnx.save(model, path)
+
+
+# ── Set before server.py is imported; the real files must not leak in from the developer's environment
+_tmp_dir = tempfile.mkdtemp(prefix="skinsense_test_")
+os.environ["MODEL_PATH"] = os.path.join(_tmp_dir, "fake_student.onnx")
+_write_fake_student(os.environ["MODEL_PATH"])
+os.environ["ASR_MODEL_PATH"] = "/nonexistent/asr"
+os.environ["LESION_GATE_PATH"] = "/nonexistent/lesion_gate.onnx"  # tests patch the gate in explicitly
+os.environ["HEATMAP_DIR"] = os.path.join(_tmp_dir, "heatmaps")
 os.environ.setdefault("INFERENCE_PORT", "5002")
 
 # Add the inference root to sys.path so `from server import app` works
@@ -42,7 +77,7 @@ from server import app  # noqa: E402
 
 @pytest.fixture(scope="module")
 def client():
-    """TestClient for the FastAPI app.  No real model weights are loaded."""
+    """TestClient for the FastAPI app, running the tiny test model."""
     return TestClient(app)
 
 

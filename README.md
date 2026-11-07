@@ -3,7 +3,7 @@
 AI-assisted dermatological screening for low-income, low-connectivity settings. Patients upload a skin photo and (optionally) describe symptoms by voice in Urdu or English. A lightweight distilled model predicts the likely condition and produces a Grad-CAM heatmap. Clinicians can review cases through a separate portal.
 
 It runs in two ways:
-- **PC / server:** Docker Compose stack (PostgreSQL, Express API, FastAPI inference on CPU, Caddy with HTTPS). See [deploy/README.md](deploy/README.md).
+- **PC / server:** Docker Compose stack (PostgreSQL, Express API, FastAPI inference on ONNX Runtime, Caddy with HTTPS). See [deploy/README.md](deploy/README.md).
 - **Phone:** the web app installs as a PWA and runs **both** the skin model and our Urdu Whisper **on the device**, offline. Screenings done offline are kept on the phone and upload to the account when the connection returns.
 
 **Current model:** MobileNetV3-Large, 320×320 input, distilled from an EfficientNet-B3 teacher and CLIP. Honest accuracy on the leak-free test split: **73.70 ± 0.81 %** (3 seeds), top-3 96.6 %, macro-F1 70.4. It also has an 8th output, *not a skin lesion*: photos of animals, objects, scenes or textures are rejected with a "please retake" message instead of getting a diagnosis (about 4.5 % of non-lesion test photos, including close-up pets, still get through). The weekend that produced it (and why earlier numbers like 74.98 % were inflated) is written up in [documentation/WEEKEND_REPORT.md](documentation/WEEKEND_REPORT.md).
@@ -60,23 +60,23 @@ sequenceDiagram
     C-->>P: Results page
 ```
 
-If the inference service is unreachable, the Express server falls back to **mock predictions** in development (`model_version` contains "mock"). In production (`NODE_ENV=production`) it returns 503 instead, and the PWA runs the model on the device. Predictions made on a phone carry a `model_version` ending in `-onnx`.
+If the inference service is unreachable, the Express server falls back to **mock predictions** in development (`model_version` contains "mock"). In production (`NODE_ENV=production`) it returns 503 instead, and the PWA runs the model on the device. The server and the phone run the same ONNX files, but only predictions made on a phone carry a `model_version` ending in `-onnx`, because the app reads that as "this ran on the device".
 
 ## Tech Stack
 | Layer | Tech |
 |---|---|
 | Frontend | React 19, Vite 7, Tailwind 4, react-router, i18next (English/Urdu), Leaflet |
 | Backend | Node.js, Express 4, PostgreSQL, JWT auth, multer |
-| Inference | FastAPI, PyTorch, MobileNetV3-Large (student model distilled from a teacher), Grad-CAM, Whisper Urdu ASR |
+| Inference | FastAPI, ONNX Runtime (no PyTorch at serving time), MobileNetV3-Large (student model distilled from a teacher), closed-form Grad-CAM, Whisper Urdu int8 |
 | On-device (PWA) | ONNX Runtime Web (student + closed-form Grad-CAM, 13 MB), transformers.js (whisper-small Urdu, int8, 330 MB), Workbox service worker, IndexedDB outbox |
-| Training | PyTorch notebooks (`notebooks/`) |
+| Training and export | PyTorch notebooks (`notebooks/`), `inference/requirements-dev.txt` |
 
 ## Repository Layout
 ```
 client/          React web app (patient + clinician portals)
 server/          Express API, migrations, tests
 dashboard/       Streamlit runtime-monitoring console
-inference/       FastAPI ML service, model weights, tests, ONNX export (export_mobile.py)
+inference/       FastAPI ML service, model weights, tests, ONNX export (export_mobile.py, export_server.py)
 deploy/          Docker Compose production stack, Caddyfile, deployment guide
 models/          Trained checkpoints (teacher, student, fine-tuned)
 notebooks/       Data exploration, preprocessing, training
@@ -96,7 +96,7 @@ git clone <repo-url> && cd <repo>
 git lfs install && git lfs pull        # model weights are stored in Git LFS
 
 # Terminal 1 - inference (5001)
-cd inference && pip install -r requirements.txt && python download_asr_model.py && python server.py
+cd inference && pip install -r requirements.txt && python server.py
 
 # Terminal 2 - backend (5000)
 cd server && npm install && cp .env.example .env && npm run dev
@@ -108,11 +108,11 @@ cd client && npm install && npm run dev
 ## Production Deployment
 - **PC / server:** `cd deploy && cp .env.example .env` (fill in the secrets), then `docker compose up -d --build`. Full guide, HTTPS options and sizing: [deploy/README.md](deploy/README.md).
 - **Phone:** open the site over HTTPS and use the browser's *Install app* / *Add to Home screen*. The first on-device screening downloads the skin model (13 MB); the first voice note downloads Whisper (330 MB, once). After that, screening works with no connection.
-- **Rebuilding the phone models:** `python inference/export_mobile.py` (skin model) and the Whisper export steps in [documentation/WEEKEND_REPORT.md](documentation/WEEKEND_REPORT.md#10-production-deployment-pc--mobile-pwa).
+- **Rebuilding the models** (needs `inference/requirements-dev.txt`): `python inference/export_mobile.py` (skin model) and the Whisper export steps in [documentation/WEEKEND_REPORT.md](documentation/WEEKEND_REPORT.md#10-production-deployment-pc--mobile-pwa), then `python inference/export_server.py` to give the server the same files.
 
 ## Runtime Validation and Monitoring
 - **Input guards** (inference service): rejects empty or oversized files, images with no skin tones, and blurry photos; low-confidence or near-uniform predictions are reported as *Inconclusive* instead of a forced diagnosis.
-- **Honest model status:** `/health` reports whether real weights are loaded; results from an untrained fallback are tagged `-UNTRAINED`.
+- **Honest model status:** `/health` reports whether the model is loaded, and `/predict` returns 503 `MODEL_NOT_LOADED` if it is not, so a missing model can never produce a diagnosis.
 - **Device telemetry:** the browser reports coarse capabilities (cores, rounded RAM, JS heap, network tier) and the inference service reports per-stage latency, memory and GPU usage. Everything is stored per screening in `device_telemetry`.
 - **Dashboard:** `streamlit run dashboard/app.py` shows median / p95 latency, stage breakdown and low-resource device share.
 
@@ -120,7 +120,7 @@ cd client && npm install && npm run dev
 ```bash
 cd server && npm test
 cd client && npm test
-cd inference && python -m pytest tests/ -v
+cd inference && pip install -r requirements-dev.txt && python -m pytest tests/ -v
 cd dashboard && python -m pytest tests/ -v
 ```
 

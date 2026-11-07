@@ -141,8 +141,9 @@ inference/
 - **Fake timers**: Used only in the Duration timer describe block, and only for `setInterval`/`clearInterval`/`Date` — **not** `setTimeout`, so React's internal scheduler keeps working.
 
 ### Python tests
-- **Model weights**: `MODEL_PATH` is set to a non-existent path before `server.py` imports, so the model loads with **random weights**. The API shape, status codes, and data types are all verified without needing the real 50 MB weights file.
-- **ASR model**: `ASR_MODEL_PATH` points to a non-existent directory → `asr_pipe = None` → `/transcribe` returns 503. All transcribe tests exercise this contract.
+- **Model weights**: `conftest.py` builds a tiny ONNX model with **random weights** and points `MODEL_PATH` at it before `server.py` imports. The API shape, status codes, and data types are all verified on a real ONNX Runtime session without Git LFS or PyTorch.
+- **Real models**: `test_real_models.py` and the real-Whisper tests in `test_whisper_onnx.py` run when the files are pulled from LFS and skip otherwise. The comparisons with PyTorch and `transformers` also need `requirements-dev.txt`.
+- **ASR model**: `ASR_MODEL_PATH` points to a non-existent directory → `asr_model = None` → `/transcribe` returns 503. A stand-in model covers the success contract.
 - **Heatmap dir**: Points to a real `tempfile.mkdtemp()` directory so the `/predict` endpoint can actually write PNG files and the `/heatmaps` tests can read them back.
 
 ---
