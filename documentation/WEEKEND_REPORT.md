@@ -592,6 +592,8 @@ The baby and the puppy are now both rejected in the live app.
 
 ## 12. Serving on ONNX Runtime, without PyTorch (7 Nov)
 
+Full write-up: [ONNX_MIGRATION.md](ONNX_MIGRATION.md).
+
 **Change:** `inference/server.py` now runs on ONNX Runtime using the same student and int8 Whisper files as the phone, plus the lesion gate exported to ONNX (`export_server.py`). PyTorch stays for training and exporting (`requirements-dev.txt`). The Whisper features and greedy decoder are in `whisper_onnx.py`.
 
 **Same answers.** The old and new `server.py`, on the same 3,936 images (val and test splits of a new leak-free split, local test uploads, out-of-scope skin images, a non-lesion photo), both on CPU:

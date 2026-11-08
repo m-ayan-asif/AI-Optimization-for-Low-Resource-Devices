@@ -134,6 +134,7 @@ See [documentation/TESTING.md](documentation/TESTING.md).
 - [Production deployment](deploy/README.md)
 - [Weekend report (2–5 Oct 2026): everything tested, changed, kept and dropped](documentation/WEEKEND_REPORT.md)
 - [Accuracy experiments](documentation/ACCURACY_EXPERIMENTS.md)
+- [ONNX migration: why, what changed and the measured results](documentation/ONNX_MIGRATION.md)
 
 ## Project Status
 Deployable: server-side inference for PCs, and an installable PWA with fully on-device inference (image + speech) for phones. Open items (label clean-up, group-aware split, branches B/C benchmark rows) are listed at the end of the [weekend report](documentation/WEEKEND_REPORT.md#open-issues-and-next-steps).
